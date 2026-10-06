@@ -42,7 +42,7 @@ def test_empty_id_is_skipped():
 
 def test_live_rbi_page_contract(page):
     """Playwright/Chromium: the live RBI page still has the structure the scraper relies on."""
-    page.goto("https://rbi.org.in/Scripts/NotificationUser.aspx?Id=13724&Mode=0", wait_until="domcontentloaded")
+    page.goto("https://rbi.org.in/Scripts/NotificationUser.aspx?Id=13724&Mode=0", wait_until="domcontentloaded", timeout=90_000)
     assert page.get_by_text("Online submission of Form A2: Removal of limits").first.is_visible()
     m = parse_page(13724, page.content())  # parse the DOM exactly as the browser built it
     assert m["ref"] == "RBI/2026-27/279" and m["date"] == "2026-10-01" and m["references"] == [12697]

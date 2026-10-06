@@ -173,3 +173,62 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 - **Why:** It gives every pipeline step a real end-to-end Playwright test (type a question in Chromium, assert the right circular appears), as the project owner asked. It also meets the Day 6 requirement to show retrieved chunks with scores.
 - **Stable selectors:** Each result is `st.container(key="hit-N")`, which Streamlit renders as CSS class `st-key-hit-N`. Tests use those and accessible labels, never Streamlit's internal class names.
 - **Hermetic UI tests:** `app.py` reads the index location from `CIRCULARIQ_INDEX`. `tests/conftest.py` builds a small index from the 5 real fixture circulars and launches Streamlit on a free port against it, so the browser tests never depend on the full local corpus.
+
+---
+
+## 4. Re-ranking and answering (Day 3)
+
+### D4.1 Re-ranker: `cross-encoder/ms-marco-MiniLM-L-6-v2` — *done*
+- **Chosen:** MiniLM-L-6 cross-encoder (22M params) re-scoring the hybrid top 50 and keeping the top 5.
+- **Rejected:** `BAAI/bge-reranker-base` (278M params), the original plan.
+- **Evidence (full 5,679-chunk index, 4 probe questions, CPU):**
+
+  | Model | Time per query (50 pairs) | Correct top passage |
+  |---|---|---|
+  | ms-marco-MiniLM-L-6-v2 | ~5 s | 4/4 |
+  | bge-reranker-base | ~45 s | 3/4 (picked para 5(iii) Dog-Ears for a question about tear limits; the answer is 5(iv) Tears) |
+
+- **Why:** 9× faster with no observed quality loss. 45 s per query would make the UI unusable and the eval take hours.
+- **Kept switchable:** `CIRCULARIQ_RERANKER=BAAI/bge-reranker-base` swaps it back for the ablation.
+
+### D4.2 Re-ranker scores are forced into [0, 1] with an explicit sigmoid — *done*
+- `CrossEncoder(..., activation_fn=torch.nn.Sigmoid())`.
+- **Why:** MiniLM outputs raw logits (−11 to +10); bge-reranker outputs probabilities. The abstention threshold (D4.4) needs one scale, whatever the model.
+- **Bug this replaced:** The first version applied its own sigmoid on top of bge-reranker's built-in one, squeezing every score into 0.50–0.73 (an irrelevant question scored 0.5005). Ranking was unaffected, so only `test_reranker_scores_irrelevant_question_low`, which checks the absolute score, caught it.
+
+### D4.3 Citations via `[S1]` markers, rendered in code — *done*
+- **Chosen:** Sources are given to the LLM as `[S1] RBI/…, Para 7 | dated … | title`. The LLM cites `[S1]`, and `answer.render()` replaces each marker with `[RBI/DCM/2026-27/473, Para 7]`.
+- **Rejected:** Asking the LLM to write the full citation itself.
+- **Why:** (1) A 3B model mangles long strings like `DOR.STR.REC.165/21-04-048/2026-27`. (2) Markers are verifiable: a marker pointing at a source that wasn't given (`[S9]` with 5 sources) is dropped instead of becoming a fabricated citation. (3) We know exactly which sources were cited, which the faithfulness eval needs.
+
+### D4.4 Abstention in three layers — *done*
+1. **Retrieval gate:** If the best re-ranker score is below `CIRCULARIQ_MIN_SCORE` (default 0.05, provisional until tuned on the gold set on Day 5), answer "Not found in the provided circulars." *without calling the LLM*. Cheap, and the LLM cannot be talked into answering from irrelevant context.
+2. **Prompted abstention:** The system prompt requires that exact phrase when the sources don't contain the answer.
+3. **Uncited answers are not trusted:** If the LLM answers but cites no valid source, the output is replaced by the abstention phrase.
+- **Trade-off accepted:** Layer 3 will sometimes discard a correct but uncited answer. For compliance use, a missed answer costs less than an unsupported one. The eval measures how often it happens.
+
+### D4.5 Recency and supersession from hyperlinks — *done*
+- **Chosen:** Each chunk carries `references` (the notification IDs its page links to). The Retriever builds a `cited_by` map: circular → newer circulars *in the corpus* that link to it. 42 of the 300 circulars have one.
+  - Sources go to the LLM **newest first**, each with its date.
+  - A source cited by a newer circular gets the note "newer circular X dated Y refers to this one and may amend it".
+  - The prompt says to follow the newer source on conflict and to mention the older instruction was amended.
+  - The UI shows a "May be amended by …" warning on such passages.
+- **Rejected:** Detecting conflicts with NLP or LLM comparison of passage pairs (slow, unreliable at 3B, hard to test).
+- **Why:** RBI amendments hyperlink the circular they amend, so the signal is explicit and free, and it is deterministic to test.
+- **Known limit:** A link means "refers to", not always "amends". Hence the wording "*may* amend", and the LLM decides from the text.
+
+### D4.6 Query rewriting by the LLM — *done*
+- The LLM turns the question into one search query, expanding vague words into regulatory terms and keeping codes, amounts and dates verbatim. Empty or garbage output falls back to the original question.
+- **The answer prompt still receives the original question**; only retrieval uses the rewrite.
+- **Observed failure (kept for the failure analysis):** "what about the money sending form thing, who approves the internal rules?" (meaning Form A2) was rewritten to an RTGS query. Retrieval missed, and the system abstained rather than hallucinating. The Day 5 ablation measures whether rewriting helps or hurts overall.
+
+### D4.7 LLM settings — *done*
+- `temperature=0` for reproducible answers and eval runs.
+- The OpenAI-compatible client (D0.3) is configured by `LLM_BASE_URL`, `LLM_MODEL` and `LLM_API_KEY`. Defaults: local Ollama with `qwen2.5:3b`.
+
+### D4.8 Testing the LLM step — *done*
+- **Unit tests use a scripted `FakeLLM`** that returns fixed replies and records the prompts. This makes the tests deterministic and lets them assert on what was sent (grounding rules present, `[S1]` labels correct, LLM not called when the gate abstains).
+- **Two Playwright tests drive the real UI with the real local LLM:** one grounded question (must cite RBI/DCM/2026-27/473 and say "quarter"), one out-of-corpus question (must abstain). Assertions are deliberately loose because LLM wording varies.
+- These two tests are **skipped, not failed, when Ollama is not running**, so the repo's suite still runs on a machine without a local LLM. On the dev machine Ollama is running, so they always execute before a commit.
+- **UI fallback:** If the LLM is unreachable, the app shows an error and still lists the retrieved passages.
+- The live RBI contract test got a 90 s navigation timeout after one transient failure while the CPU was saturated by model tests.

@@ -1,4 +1,5 @@
-"""Hybrid retrieval: BM25 + dense (bge-small, FAISS), fused with Reciprocal Rank Fusion.
+"""Hybrid retrieval: BM25 + dense (bge-small, FAISS), fused with Reciprocal Rank Fusion,
+then re-ranked by a cross-encoder.
 
 python -m circulariq.retrieve            ->  builds data/index/ from data/chunks.jsonl
 python -m circulariq.retrieve "question" ->  prints the top hybrid hits
@@ -14,6 +15,7 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
+RERANK_MODEL = os.environ.get("CIRCULARIQ_RERANKER", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 QUERY_PREFIX = "Represent this sentence for searching relevant passages: "  # bge-v1.5 query instruction
 INDEX_DIR = Path(os.environ.get("CIRCULARIQ_INDEX", "data/index"))
 RRF_K = 60
@@ -26,6 +28,15 @@ def embedder():
         from sentence_transformers import SentenceTransformer
         _models["embed"] = SentenceTransformer(EMBED_MODEL)
     return _models["embed"]
+
+
+def reranker():
+    if "rerank" not in _models:
+        import torch
+        from sentence_transformers import CrossEncoder
+        # explicit sigmoid: MiniLM emits raw logits, bge-reranker probabilities; this makes both [0, 1]
+        _models["rerank"] = CrossEncoder(RERANK_MODEL, max_length=512, activation_fn=torch.nn.Sigmoid())
+    return _models["rerank"]
 
 
 def doc_text(c: dict) -> str:
@@ -75,6 +86,13 @@ class Retriever:
         self.index = faiss.read_index(str(index_dir / "dense.faiss"))
         # BM25 also sees the circular's ref and number, so exact-ID queries hit
         self.bm25 = BM25Okapi([tokenize(f"{c['ref']} {c['circular_no']} {doc_text(c)}") for c in self.chunks])
+        # recency: nid -> newer circulars in the corpus that cite it (and so may amend it)
+        circ = {c["nid"]: c for c in self.chunks}
+        self.cited_by: dict[int, list[dict]] = {}
+        for c in circ.values():
+            for old in c.get("references", []):
+                if old in circ and circ[old]["date"] <= c["date"]:
+                    self.cited_by.setdefault(old, []).append({k: c[k] for k in ("nid", "ref", "date", "title", "url")})
 
     def bm25_search(self, query: str, k: int = 50) -> list[tuple[int, float]]:
         scores = self.bm25.get_scores(tokenize(query))
@@ -90,9 +108,22 @@ class Retriever:
         lists = [[i for i, _ in self.bm25_search(query, k)], [i for i, _ in self.dense_search(query, k)]]
         return rrf(lists)[:k]
 
+    def rerank(self, query: str, ids: list[int], top: int = 5) -> list[tuple[int, float]]:
+        """Cross-encoder reads (query, chunk) together; returns relevance in [0, 1]."""
+        if not ids:
+            return []
+        scores = np.asarray(reranker().predict([(query, doc_text(self.chunks[i])) for i in ids], batch_size=16))
+        order = np.argsort(-scores)[:top]
+        return [(ids[j], float(scores[j])) for j in order]
+
     def search(self, query: str, mode: str = "hybrid", k: int = 50) -> list[dict]:
-        hits = {"bm25": self.bm25_search, "dense": self.dense_search, "hybrid": self.hybrid_search}[mode](query, k)
-        return [{**self.chunks[i], "score": s, "idx": i} for i, s in hits]
+        """mode: bm25 | dense | hybrid | rerank (hybrid top-50 re-scored by the cross-encoder, top k)."""
+        if mode == "rerank":
+            hits = self.rerank(query, [i for i, _ in self.hybrid_search(query, 50)], top=k)
+        else:
+            hits = {"bm25": self.bm25_search, "dense": self.dense_search, "hybrid": self.hybrid_search}[mode](query, k)
+        return [{**self.chunks[i], "score": s, "idx": i, "cited_by": self.cited_by.get(self.chunks[i]["nid"], [])}
+                for i, s in hits]
 
 
 if __name__ == "__main__":

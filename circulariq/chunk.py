@@ -151,6 +151,7 @@ def chunk_circular(meta: dict, html: str) -> list[dict]:
                 "section": sec,
                 "text": text,
                 "url": PAGE.format(meta["id"]),
+                "references": meta.get("references", []),  # older circulars this one cites (recency)
             })
     return chunks
 

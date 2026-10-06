@@ -50,23 +50,26 @@ def test_scores_sorted_and_k_respected(retriever):
         assert [h["score"] for h in hits] == sorted((h["score"] for h in hits), reverse=True)
 
 
-def test_search_page_shows_cited_passages(page, app_url):
-    """Playwright: type a question, see retrieved passages with citation links and scores."""
+def search(page, app_url, question, mode=None):
     page.goto(app_url)
+    page.get_by_text("Rewrite query").click()  # retrieval tests use the question verbatim
+    if mode:
+        page.get_by_text(mode, exact=True).click()
     box = page.get_by_label("Ask a question about RBI circulars")
-    box.fill("What are the tear size limits for sorting banknotes as unfit?")
+    box.fill(question)
     box.press("Enter")
+
+
+def test_search_page_shows_cited_passages(page, app_url):
+    """Playwright: type a question, see re-ranked passages with citation links and scores."""
+    search(page, app_url, "What are the tear size limits for sorting banknotes as unfit?")
     first = page.locator(".st-key-hit-0")
-    expect(first).to_contain_text("RBI/DCM/2026-27/473", timeout=60_000)
-    expect(first.get_by_role("link")).to_have_attribute("href", "https://rbi.org.in/Scripts/NotificationUser.aspx?Id=13723&Mode=0")
-    expect(page.get_by_text("Retrieved passages (hybrid)")).to_be_visible()
+    expect(first).to_contain_text("RBI/DCM/2026-27/473", timeout=120_000)
+    expect(first.get_by_role("link").first).to_have_attribute("href", "https://rbi.org.in/Scripts/NotificationUser.aspx?Id=13723&Mode=0")
+    expect(page.get_by_text("Retrieved passages (rerank)")).to_be_visible()
 
 
 def test_search_page_mode_switch(page, app_url):
-    page.goto(app_url)
-    box = page.get_by_label("Ask a question about RBI circulars")
-    box.fill("RBI/2026-27/200")
-    box.press("Enter")
-    page.get_by_text("bm25", exact=True).click()
-    expect(page.get_by_text("Retrieved passages (bm25)")).to_be_visible(timeout=60_000)
+    search(page, app_url, "RBI/2026-27/200", mode="bm25")
+    expect(page.get_by_text("Retrieved passages (bm25)")).to_be_visible(timeout=120_000)
     expect(page.locator(".st-key-hit-0")).to_contain_text("RBI/2026-27/200")
