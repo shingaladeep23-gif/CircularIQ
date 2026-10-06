@@ -27,7 +27,22 @@ st.title("CircularIQ")
 st.caption("Cited answers from RBI circulars. Answers use only the retrieved passages and say so when they can't answer.")
 ask, evaluation = st.tabs(["Ask", "Evaluation"])
 
+EXAMPLES = [
+    "How long does a commercial bank have to decide whether a red-flagged account is a fraud?",
+    "Till what date are fresh FCNR(B) deposits mobilised by commercial banks exempt from CRR and SLR?",
+    "How often must banks test their note sorting machines?",
+    "What is the current policy repo rate?",  # not in the corpus: shows abstention
+]
+
+
+def use_example(text: str):
+    st.session_state["question"] = text
+
+
 with ask:
+    st.caption("Try an example:")
+    for col, ex in zip(st.columns(len(EXAMPLES)), EXAMPLES):
+        col.button(ex, on_click=use_example, args=(ex,), width="stretch")
     q = st.text_input("Ask a question about RBI circulars", key="question")
     c1, c2 = st.columns([3, 1])
     mode = c1.radio("Retrieval", ["rerank", "hybrid", "bm25", "dense"], horizontal=True, key="mode",

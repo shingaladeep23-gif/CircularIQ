@@ -73,3 +73,13 @@ def test_search_page_mode_switch(page, app_url):
     search(page, app_url, "RBI/2026-27/200", mode="bm25")
     expect(page.get_by_text("Retrieved passages (bm25)")).to_be_visible(timeout=120_000)
     expect(page.locator(".st-key-hit-0")).to_contain_text("RBI/2026-27/200")
+
+
+def test_example_button_fills_question_and_searches(page, app_url):
+    """Playwright: clicking an example question fills the box and runs retrieval."""
+    page.goto(app_url)
+    page.get_by_text("Rewrite query").click()
+    page.get_by_role("button", name="How often must banks test their note sorting machines?").click()
+    expect(page.get_by_label("Ask a question about RBI circulars")).to_have_value(
+        "How often must banks test their note sorting machines?", timeout=30_000)
+    expect(page.locator(".st-key-hit-0")).to_contain_text("RBI/DCM/2026-27/473", timeout=120_000)

@@ -4,6 +4,7 @@ correctness), abstention, and the ablation table.
 python -m circulariq.evaluate --validate        check every gold quote exists in the corpus
 python -m circulariq.evaluate                   run all configs -> data/eval/results.{json,md}
 python -m circulariq.evaluate --retrieval-only  skip the LLM (fast)
+python -m circulariq.evaluate --report --threshold 0.1   re-summarise saved rows at another threshold
 """
 import argparse
 import hashlib
@@ -186,8 +187,38 @@ def by_type(rows: list[dict], mode: str, threshold: float) -> dict:
     return out
 
 
+FAILURE_ORDER = ["answered unanswerable", "retrieval miss", "false abstention", "used superseded rule", "wrong answer"]
+
+
+def failures(rows: list[dict], gold: list[dict], mode: str, threshold: float) -> list[dict]:
+    """One category per wrong outcome, so the failure analysis comes from data, not anecdotes."""
+    q = {g["id"]: g for g in gold}
+    out = []
+    for r in rows:
+        abst = abstained(r, mode, threshold)
+        if r["type"] == "unanswerable":
+            cat = None if abst else "answered unanswerable"
+        elif r["rank"] is None or r["rank"] > 5:
+            cat = "retrieval miss"
+        elif abst:
+            cat = "false abstention"
+        elif r.get("correct"):
+            cat = None
+        else:
+            cat = "used superseded rule" if r.get("cites_stale") else "wrong answer"
+        if cat:
+            out.append({"id": r["id"], "type": r["type"], "category": cat, "question": q[r["id"]]["question"],
+                        "rank": r["rank"], "answer": "" if abst else r.get("answer", ""), "top5": r["top5"][:2]})
+    return sorted(out, key=lambda f: (FAILURE_ORDER.index(f["category"]), f["id"]))
+
+
 def pct(x: float) -> str:
     return f"{100 * x:.1f}%"
+
+
+def clip(s: str, n: int) -> str:
+    s = re.sub(r"\s+", " ", s).replace("|", "/")
+    return s if len(s) <= n else s[: n - 1] + "…"
 
 
 def to_markdown(results: dict, generate: bool) -> str:
@@ -216,7 +247,40 @@ def to_markdown(results: dict, generate: bool) -> str:
     for t, s in results["by_type"].items():
         row = f"| {t} | {s['n']} | {pct(s['recall@5']) if 'recall@5' in s else '-'} |"
         lines.append(row + (f" {pct(s.get('correct', s.get('abstained', 0)))} |" if generate else ""))
+    if results.get("failures"):
+        fs = results["failures"]
+        counts = ", ".join(f"{c}: {sum(f['category'] == c for f in fs)}" for c in FAILURE_ORDER
+                           if any(f["category"] == c for f in fs))
+        lines += [f"\n## Failures (full system)\n\n{len(fs)} of {results['n_answerable'] + results['n_unanswerable']} "
+                  f"questions. {counts}.\n",
+                  "| Id | Type | Category | Question | Evidence rank | System answer |", "|---|---|---|---|---|---|"]
+        lines += [f"| {f['id']} | {f['type']} | {f['category']} | {clip(f['question'], 90)} | {f['rank'] or '-'} | "
+                  f"{clip(f['answer'], 120) or '(abstained)'} |" for f in fs]
     return "\n".join(lines) + "\n"
+
+
+def build_report(rows: dict, gold: list[dict], threshold: float, generate: bool) -> dict:
+    """Every summary table from the per-question rows; used after a run and by --report."""
+    full = list(rows)[-1]
+    mode = CONFIGS[full][0]
+    results = {"threshold": threshold, "n_answerable": sum(q["type"] != "unanswerable" for q in gold),
+               "n_unanswerable": sum(q["type"] == "unanswerable" for q in gold),
+               "summary": {n: summarize(rs, CONFIGS[n][0], threshold, generate) for n, rs in rows.items()},
+               "sweep": [], "failures": [], "rows": rows}
+    if generate:
+        results.update(sweep=threshold_sweep(rows[full]), by_type=by_type(rows[full], mode, threshold),
+                       failures=failures(rows[full], gold, mode, threshold))
+    else:
+        results["by_type"] = {t: {"n": len(rs), "recall@5": recall_at([r["rank"] for r in rs], 5)}
+                              for t in sorted({r["type"] for r in rows[full]} - {"unanswerable"})
+                              for rs in [[r for r in rows[full] if r["type"] == t]]}
+    return results
+
+
+def write(results: dict, generate: bool):
+    (OUT / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    (OUT / "results.md").write_text(to_markdown(results, generate), encoding="utf-8")
+    print(to_markdown(results, generate))
 
 
 def main(generate: bool, threshold: float):
@@ -226,24 +290,9 @@ def main(generate: bool, threshold: float):
     OUT.mkdir(parents=True, exist_ok=True)
     gold, retriever = load_gold(), Retriever()
     llm = CachedLLM(OUT / "llm_cache.jsonl", chat)
-    rows, summary = {}, {}
-    for name, (mode, rw) in CONFIGS.items():
-        if rw and not generate:
-            continue  # rewriting needs the LLM
-        rows[name] = run_config(name, mode, rw, gold, retriever, llm, generate)
-        summary[name] = summarize(rows[name], mode, threshold, generate)
-    full = list(rows)[-1]
-    results = {"threshold": threshold, "n_answerable": sum(q["type"] != "unanswerable" for q in gold),
-               "n_unanswerable": sum(q["type"] == "unanswerable" for q in gold), "summary": summary,
-               "sweep": threshold_sweep(rows[full]) if generate else [],
-               "by_type": by_type(rows[full], CONFIGS[full][0], threshold) if generate else {}, "rows": rows}
-    if not generate:
-        results["by_type"] = {t: {"n": len(rs), "recall@5": recall_at([r["rank"] for r in rs], 5)}
-                              for t in sorted({r["type"] for r in rows[full]} - {"unanswerable"})
-                              for rs in [[r for r in rows[full] if r["type"] == t]]}
-    (OUT / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
-    (OUT / "results.md").write_text(to_markdown(results, generate), encoding="utf-8")
-    print(to_markdown(results, generate))
+    rows = {name: run_config(name, mode, rw, gold, retriever, llm, generate)
+            for name, (mode, rw) in CONFIGS.items() if generate or not rw}  # rewriting needs the LLM
+    write(build_report(rows, gold, threshold, generate), generate)
 
 
 if __name__ == "__main__":
@@ -253,8 +302,13 @@ if __name__ == "__main__":
     ap.add_argument("--validate", action="store_true")
     ap.add_argument("--retrieval-only", action="store_true")
     ap.add_argument("--threshold", type=float, default=MIN_RERANK_SCORE)
+    ap.add_argument("--report", action="store_true", help="rebuild results.md from results.json (no retrieval/LLM)")
     a = ap.parse_args()
-    if a.validate:
+    if a.report:
+        prev = json.loads((OUT / "results.json").read_text(encoding="utf-8"))
+        generate = "llm_abstained" in next(iter(prev["rows"].values()))[0]
+        write(build_report(prev["rows"], load_gold(), a.threshold, generate), generate)
+    elif a.validate:
         chunks = [json.loads(l) for l in open("data/chunks.jsonl", encoding="utf-8")]
         probs = validate_gold(load_gold(), chunks)
         print("\n".join(probs) or f"gold OK: {len(load_gold())} questions, all evidence found")

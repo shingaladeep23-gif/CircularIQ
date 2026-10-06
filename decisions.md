@@ -343,3 +343,33 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 - `ollama ps` during the eval: qwen2.5:3b at 4096 context occupies 2.4 GB, split **38% CPU / 62% GPU**. Model weights plus KV cache exceed the GTX 1050's 3 GB, so part of every forward pass runs on the CPU.
 - One question costs 1 answer call + 1 judge call per answer sentence + 1 correctness call. The 5-configuration eval takes a few hours, so the disk cache (D6.6) matters.
 - **Not done (upgrade path):** `OLLAMA_FLASH_ATTENTION=1` with `OLLAMA_KV_CACHE_TYPE=q8_0` roughly halves KV-cache memory and would likely fit the model fully on the GPU. Not switched mid-run, to keep all configurations' generations comparable.
+
+### D6.12 Failure analysis is computed, not hand-picked — *done*
+- `evaluate.failures()` puts every wrong full-system outcome into exactly one category, in order of severity:
+  1. **answered unanswerable:** the system gave an answer the corpus doesn't support (the costliest error in compliance)
+  2. **retrieval miss:** evidence not in the top 5
+  3. **false abstention:** evidence retrieved but the system declined
+  4. **used superseded rule:** the answer cites the stale circular of a recency pair (D5.3)
+  5. **wrong answer:** evidence retrieved, answered, judged incorrect
+- **Why:** A README failure section written from memory tends to show the interesting failures and skip the embarrassing ones. Generating it from the rows lists all of them.
+
+### D6.13 `--report`: re-summarise saved rows without re-running — *done*
+- `python -m circulariq.evaluate --report --threshold T` rebuilds every table (ablation, sweep, per-type, failures) from `results.json`.
+- **Why:** The abstention threshold is chosen *after* seeing the sweep (D6.5). Re-running retrieval and the LLM to apply a different threshold would take an hour for a change that is pure arithmetic.
+
+---
+
+## 7. UI and demo (Days 6–7)
+
+### D7.1 Example-question buttons — *done*
+- Four one-click examples: a fraud-timeline question, a recency trap (FCNR(B) CRR/SLR exemption), the note-sorting-machine question, and an out-of-corpus question (repo rate) that shows abstention.
+- **Why:** A reviewer opening the app doesn't know what is in a 300-circular corpus. Examples that show the three behaviours that matter (cite, prefer the newer rule, abstain) make the demo self-explanatory.
+- `width="stretch"` instead of the deprecated `use_container_width`.
+
+### D7.2 "Cited in answer" badges on retrieved passages — *done*
+- Each retrieved passage the answer actually cites gets a badge, so the reader sees which of the five passages the answer rests on, and which were retrieved but unused.
+
+### D7.3 Demo video recorded by Playwright, not by hand — *done*
+- `scripts/record_demo.py` launches the app on the full index and drives it in Chromium with `record_video_dir`: grounded answer → scroll the passages → abstention → Evaluation tab. It writes `docs/demo.webm` plus three screenshots for the README.
+- **Rejected:** Screen-recording by hand (not reproducible; goes stale after any UI change).
+- **Why:** It reuses the browser automation already in the test stack, and regenerating the demo after a change is one command.

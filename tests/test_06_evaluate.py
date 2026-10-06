@@ -101,3 +101,36 @@ def test_ui_evaluation_tab_shows_ablation_table(page, app_url):
             expect(results.get_by_role("cell", name=config, exact=True)).to_be_visible(timeout=60_000)
     else:
         expect(results).to_contain_text("No evaluation results yet", timeout=60_000)
+
+
+def test_failures_are_categorised_from_the_rows():
+    from circulariq.evaluate import failures
+
+    gold = [{"id": i, "question": f"question {i}"} for i in "abcdefg"]
+    base = {"top_score": 0.9, "llm_abstained": False, "top5": ["X p1"], "answer": "ans"}
+    rows = [
+        {**base, "id": "a", "type": "fact", "rank": 1, "correct": True},                       # fine
+        {**base, "id": "b", "type": "fact", "rank": None},                                       # retrieval miss
+        {**base, "id": "c", "type": "fact", "rank": 2, "llm_abstained": True},                 # false abstention
+        {**base, "id": "d", "type": "recency", "rank": 1, "correct": False, "cites_stale": True},  # stale
+        {**base, "id": "e", "type": "fact", "rank": 3, "correct": False},                       # wrong answer
+        {**base, "id": "f", "type": "unanswerable", "rank": None},                               # answered it
+        {**base, "id": "g", "type": "unanswerable", "rank": None, "top_score": 0.01},           # gated: fine
+    ]
+    got = {f["id"]: f["category"] for f in failures(rows, gold, "rerank", 0.05)}
+    assert got == {"b": "retrieval miss", "c": "false abstention", "d": "used superseded rule",
+                   "e": "wrong answer", "f": "answered unanswerable"}
+    assert [f["id"] for f in failures(rows, gold, "rerank", 0.05)][0] == "f"  # most serious first
+
+
+def test_report_rebuilds_from_saved_rows_at_any_threshold():
+    from circulariq.evaluate import build_report
+
+    gold = [{"id": str(i), "type": r["type"], "question": "q"} for i, r in enumerate(rows())]
+    rs = [{**r, "id": str(i), "top5": [], "answer": "a"} for i, r in enumerate(rows())]
+    saved = {"Hybrid + re-ranker + rewrite": rs}
+    lo, hi = build_report(saved, gold, 0.0, True), build_report(saved, gold, 0.05, True)
+    s_lo, s_hi = lo["summary"]["Hybrid + re-ranker + rewrite"], hi["summary"]["Hybrid + re-ranker + rewrite"]
+    assert s_lo["abstention_acc"] == 0.5 and s_hi["abstention_acc"] == 1.0
+    assert any(f["category"] == "answered unanswerable" for f in lo["failures"])
+    assert not any(f["category"] == "answered unanswerable" for f in hi["failures"])
