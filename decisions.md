@@ -232,3 +232,42 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 - These two tests are **skipped, not failed, when Ollama is not running**, so the repo's suite still runs on a machine without a local LLM. On the dev machine Ollama is running, so they always execute before a commit.
 - **UI fallback:** If the LLM is unreachable, the app shows an error and still lists the retrieved passages.
 - The live RBI contract test got a 90 s navigation timeout after one transient failure while the CPU was saturated by model tests.
+
+---
+
+## 5. Gold Q&A set (Day 4)
+
+### D5.1 Size and mix — *done*
+- **82 questions: 67 answerable, 15 unanswerable** (the brief asks for 60–100 with about 15 unanswerable).
+- **Types**, so failures can be broken down later:
+
+  | Type | What it tests |
+  |---|---|
+  | `fact` | Direct lookups of numbers, dates and obligations |
+  | `paraphrase` | Wording deliberately different from the source (tests dense retrieval) |
+  | `exact-id` | Circular numbers and return codes like RBI/2026-27/273, R343 (tests BM25) |
+  | `table` | The answer lives in a table row (tests table chunking) |
+  | `recency` | A newer circular overrides an older one (tests D4.5) |
+  | `colloquial` | Vague, informal phrasing (tests query rewriting, D4.6) |
+  | `unanswerable` | Plausible for this corpus, but the answer is not in it (tests abstention, D4.4) |
+
+- **Coverage:** 50+ different circulars: small standalone circulars, FEMA notifications, currency management, and the large consolidated Directions (fraud, cybersecurity, compliance, audit, KCC, market risk, Lead Bank Scheme, pensions).
+
+### D5.2 Evidence is (notification id, verbatim quote), not chunk ids — *done*
+- **Chosen:** `"evidence": [{"nid": 13641, "quote": "within 180 days from the date of first reporting"}]`. A retrieved chunk is relevant if it is from that notification and contains the quote (whitespace-insensitive).
+- **Rejected:** Storing chunk ids like `13641-31`.
+- **Why:** Chunk ids change whenever the chunker changes (a tweak to the paragraph regex renumbers everything after it). Chunk-id gold would silently go stale and corrupt every metric. Quote-based gold survives re-chunking, and `python -m circulariq.evaluate --validate` (also a test) proves every quote still exists.
+- **Same circular required:** The corpus has near-identical amendments issued separately to Commercial Banks, Small Finance Banks, Payments Banks, UCBs and so on. Questions name the entity type, and only the named entity's circular counts. Retrieving the Small Finance Bank copy for a Commercial Bank question is a real error for a compliance officer.
+
+### D5.3 Recency questions record the stale evidence — *done*
+- Each `recency` question also lists `stale` evidence: the older circular's superseded text (e.g., the priority-sector FCNR(B) exemption end date, moved from September 30, 2026 by RBI/2026-27/232 to August 31, 2026 by RBI/2026-27/256).
+- **Why:** The eval can then tell "answered from the outdated rule" apart from "retrieved nothing". The three FCNR(B) date changes are natural traps: the old date sounds just as authoritative.
+
+### D5.4 Unanswerable questions were verified absent — *done*
+- Every unanswerable question's key terms were searched for in all 5,679 chunks (repo rate, LRS, DICGC, LTV, contactless, interchange fee, Leh, and so on): zero hits.
+- **Near-misses on purpose:** "When will ₹500 notes be withdrawn?" sits next to the real ₹2000 withdrawal circular. "Current CRR percentage?" sits next to a dozen CRR amendment circulars that never state the rate. "KYC re-verification period for high-risk customers" (the brief's own example) sits next to KYC amendments that only change the certified-copy rule.
+
+### D5.5 How the questions were written — *done*
+- Questions were written by reading each circular's chunks, with answers taken only from the text, and phrased to avoid copying the source wording except where the type requires it (`exact-id`, `table`).
+- The set lives in `data/make_gold.py` (readable Python, one `add()` per question) and is generated into `data/gold.jsonl`.
+- **Known limit:** One author wrote all questions, so phrasing has a single style. A second annotator writing 20 more questions blind (without reading the chunks first) would be the best next improvement to the eval.
