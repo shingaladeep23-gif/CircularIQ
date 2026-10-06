@@ -47,7 +47,8 @@ with ask:
     c1, c2 = st.columns([3, 1])
     mode = c1.radio("Retrieval", ["rerank", "hybrid", "bm25", "dense"], horizontal=True, key="mode",
                     help="rerank = hybrid (BM25 + dense, RRF) top 50, re-scored by a cross-encoder")
-    use_rewrite = c2.toggle("Rewrite query", value=True, key="rewrite")
+    use_rewrite = c2.toggle("Rewrite query", value=False, key="rewrite",
+                            help="LLM rewrites the question before search. Off by default: it lowered Recall@5 in the eval.")
 
     if q:
         with st.spinner("Searching circulars and drafting an answer..."):

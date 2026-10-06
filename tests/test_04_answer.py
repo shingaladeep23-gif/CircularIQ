@@ -48,12 +48,14 @@ def test_citation_marker_variants_are_normalised():
     assert normalize_markers("Tested quarterly [S1, S3].") == "Tested quarterly [S1][S3]."
     assert normalize_markers("x [S2 and S4] y [Sources S5]") == "x [S2][S4] y [S5]"
     assert normalize_markers("see [RBI/2026-27/279, Para 2]") == "see [RBI/2026-27/279, Para 2]"  # untouched
+    assert normalize_markers("Within 180 days. [S1-S3]") == "Within 180 days. [S1][S2][S3]"
+    assert normalize_markers("[S2–S3, S5]") == "[S2][S3][S5]"
 
 
 def test_answer_cites_real_paragraph(retriever):
     llm = FakeLLM("note sorting machine testing frequency accuracy",
                   "Banks must test note sorting machines quarterly for accuracy and consistency [S1].")
-    r = answer("how often are NSMs tested?", retriever, llm=llm)
+    r = answer("how often are NSMs tested?", retriever, llm=llm, use_rewrite=True)
     assert not r["abstained"]
     cited = r["sources"][r["cited"][0] - 1]
     assert (cited["nid"], cited["para"]) == (13723, "7")
@@ -140,3 +142,10 @@ def test_ui_answers_with_clickable_citation(page, app_url):
 def test_ui_abstains_when_corpus_has_no_answer(page, app_url):
     ask(page, app_url, "What is the capital gains tax rate on equity mutual funds?")
     expect(page.locator(".st-key-answer")).to_contain_text(ABSTAIN, timeout=180_000)
+
+
+def test_rewrite_is_off_by_default(retriever):
+    """The eval showed rewriting lowers recall (D6.14), so the default path makes a single LLM call."""
+    llm = FakeLLM("Banks must test note sorting machines quarterly [S1].")
+    r = answer("How often must banks test note sorting machines for accuracy?", retriever, llm=llm)
+    assert len(llm.calls) == 1 and r["query"] == r["question"] and not r["abstained"]

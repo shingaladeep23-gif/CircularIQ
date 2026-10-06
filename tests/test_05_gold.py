@@ -55,7 +55,6 @@ def test_ui_top_passage_contains_gold_evidence(page, app_url):
     """Playwright: ask a real gold question in the browser; the top passage must contain its evidence."""
     q = next(g for g in GOLD if g["evidence"] and g["evidence"][0]["nid"] == 13724)  # circular in the fixture index
     page.goto(app_url)
-    page.get_by_text("Rewrite query").click()
     box = page.get_by_label("Ask a question about RBI circulars")
     box.fill(q["question"])
     box.press("Enter")

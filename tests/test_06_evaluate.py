@@ -80,7 +80,7 @@ def test_threshold_sweep_trades_coverage_for_abstention():
 
 
 def test_markdown_table_renders():
-    res = {"threshold": 0.05, "n_answerable": 3, "n_unanswerable": 2,
+    res = {"threshold": 0.05, "n_answerable": 3, "n_unanswerable": 2, "full": "BM25 only",
            "summary": {"BM25 only": summarize(rows(), "bm25", 0.05, True)},
            "sweep": threshold_sweep(rows()), "by_type": {"fact": {"n": 3, "recall@5": 1 / 3, "correct": 1 / 3}}}
     md = to_markdown(res, generate=True)
@@ -106,7 +106,7 @@ def test_ui_evaluation_tab_shows_ablation_table(page, app_url):
 def test_failures_are_categorised_from_the_rows():
     from circulariq.evaluate import failures
 
-    gold = [{"id": i, "question": f"question {i}"} for i in "abcdefg"]
+    gold = [{"id": i, "question": f"question {i}"} for i in "abcdefgh"]
     base = {"top_score": 0.9, "llm_abstained": False, "top5": ["X p1"], "answer": "ans"}
     rows = [
         {**base, "id": "a", "type": "fact", "rank": 1, "correct": True},                       # fine
@@ -116,6 +116,7 @@ def test_failures_are_categorised_from_the_rows():
         {**base, "id": "e", "type": "fact", "rank": 3, "correct": False},                       # wrong answer
         {**base, "id": "f", "type": "unanswerable", "rank": None},                               # answered it
         {**base, "id": "g", "type": "unanswerable", "rank": None, "top_score": 0.01},           # gated: fine
+        {**base, "id": "h", "type": "fact", "rank": 7, "correct": True},                        # right anyway: fine
     ]
     got = {f["id"]: f["category"] for f in failures(rows, gold, "rerank", 0.05)}
     assert got == {"b": "retrieval miss", "c": "false abstention", "d": "used superseded rule",

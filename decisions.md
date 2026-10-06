@@ -373,3 +373,49 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 - `scripts/record_demo.py` launches the app on the full index and drives it in Chromium with `record_video_dir`: grounded answer → scroll the passages → abstention → Evaluation tab. It writes `docs/demo.webm` plus three screenshots for the README.
 - **Rejected:** Screen-recording by hand (not reproducible; goes stale after any UI change).
 - **Why:** It reuses the browser automation already in the test stack, and regenerating the demo after a change is one command.
+
+### D6.14 Query rewriting is switched OFF in the shipped system — *done (decided by the eval)*
+- **Result:** Adding LLM query rewriting on top of hybrid + re-ranker *lowered* every metric:
+
+  | | Recall@5 | MRR@10 | Correct | Answered |
+  |---|---|---|---|---|
+  | Hybrid + re-ranker | 95.5% | 0.836 | 79.1% | 85.1% |
+  | + query rewrite | 88.1% | 0.776 | 65.7% | 71.6% |
+
+- **Why it hurts:** The gold questions are already specific, and the 3B rewriter "generalises" them. It drops the entity type ("for commercial banks"), the instrument, or an exact code, or swaps in a wrong guess (Form A2 → RTGS, D4.6). The re-ranker then faithfully ranks passages for the *wrong* query.
+- **Shipped:** `answer(use_rewrite=False)` by default. The UI toggle is off by default, with a tooltip saying why. `evaluate.FULL_SYSTEM = "Hybrid + re-ranker"` names what the per-type, sweep and failure tables describe. Rewriting stays as an ablation row and an opt-in toggle.
+- **When to revisit:** With a stronger rewriter, or for genuinely vague questions (the 3 colloquial questions are too few to justify it on their own).
+
+### D6.15 Where the shipped system fails: mostly by declining, not by inventing — *observed*
+- **All 15 unanswerable questions were refused in every configuration.** No configuration answered a question the corpus can't support.
+- **False abstentions (evidence retrieved, system declined)** were the largest failure group in the first full run. Reading all 9 for Hybrid + re-ranker:
+
+  | Cause | Questions | Interpretation |
+  |---|---|---|
+  | Correct answer, but uncited, so discarded by D4.4 | q16, q59 | Cost of the strict rule |
+  | Wrong answer, uncited, so **blocked** by D4.4 | q32 (wrong bond tenors), q41 (claimed "not withdrawn") | Benefit of the strict rule |
+  | Range citation `[S1-S5]` not recognised | q65 | **Bug**, fixed (`normalize_markers` handles ranges) |
+  | The model replied "Not found" with the evidence at rank 1–3 | q07, q29, q33, q64 | 3B reading limits |
+
+- The uncited rule traded exactly two correct answers for two blocked wrong ones. For compliance, that is the right trade.
+
+### D6.16 Hand spot-check of the LLM judge — *done*
+- **Correctness:** A random sample of 20 verdicts (seed 7) from Hybrid + re-ranker. Agreement **19/20**. The disagreement, q18, was judged NO although "max five years" matches the gold answer. Separately, q43 ("at least once in three years", exactly right) was judged wrong.
+- **Faithfulness:** A random sample of 20 claims (seed 11). Agreement **17/20**. All three disagreements are the judge saying "not supported" for a supported claim:
+  - q06 uses the circular's date, which the answerer saw in the source header but the judge prompt omits. A flaw in my judge prompt; upgrade: pass the same header to the judge.
+  - q05 is a meta-sentence about a source, not a factual claim.
+  - q23 is plain strictness.
+- **Conclusion:** This judge errs strict, so the reported correctness and faithfulness are, if anything, *understated*. The faithfulness figure also counts "This is stated in [S2]"-style sentences as claims, which drags it down without reflecting hallucination.
+- **Not re-run with a fixed judge prompt:** That needs new judge calls for every claim in every configuration (hours on this GPU), and a judge changed *after* seeing the numbers invites tuning the metric to the result. Logged as the first improvement for a future eval run.
+
+### D6.17 A failure is what the user sees — *done*
+- `failures()` now checks the outcome first: a correct answer is not a failure even if the gold paragraph ranked 6th or 7th (q20 got ₹4,850 crore from the circular title in the source header; q35 gave the right date from a sibling paragraph). Low-ranked evidence still shows in the Recall@5 and MRR@10 columns, where it belongs.
+- Shipped-system failures: **13 of 82** (8 false abstentions, 4 wrong answers, 1 retrieval miss), and 2 of the 4 "wrong answers" are the judge errors found in the spot-check (D6.16).
+
+### D7.4 Shipped configuration — *done*
+- Hybrid retrieval (BM25 + bge-small, RRF k=60, top 50) → MiniLM cross-encoder (top 5) → qwen2.5:3b with `[S#]` citations, newest-first sources and "may be amended by" notes → abstain if top score < 0.05, if the model abstains, or if the answer has no valid citation. **No query rewriting** (D6.14).
+- The threshold stays at 0.05 although the sweep is flat from 0 to 0.3: accuracy is identical, and the gate saves an LLM call on clearly out-of-scope questions.
+
+### D7.5 Demo artefacts are committed — *done*
+- `docs/demo.webm` (6 MB) and three PNG screenshots, produced by `scripts/record_demo.py` against the full index and real LLM. The README example answer is copied from that run, not written by hand.
+- **Trade-off:** Each re-recording adds about 6 MB to git history. Acceptable for a portfolio repo; switch to a GitHub release asset if it gets re-recorded often.

@@ -23,6 +23,7 @@ CONFIGS = {
     "Hybrid + re-ranker": ("rerank", False),
     "Hybrid + re-ranker + rewrite": ("rerank", True),
 }
+FULL_SYSTEM = "Hybrid + re-ranker"  # what ships: rewriting lowered recall and correctness (see results)
 THRESHOLDS = [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5]
 
 FAITH_PROMPT = """Source passages:
@@ -198,12 +199,12 @@ def failures(rows: list[dict], gold: list[dict], mode: str, threshold: float) ->
         abst = abstained(r, mode, threshold)
         if r["type"] == "unanswerable":
             cat = None if abst else "answered unanswerable"
+        elif not abst and r.get("correct"):
+            cat = None  # user-visible outcome is right, even if the evidence paragraph ranked low
         elif r["rank"] is None or r["rank"] > 5:
             cat = "retrieval miss"
         elif abst:
             cat = "false abstention"
-        elif r.get("correct"):
-            cat = None
         else:
             cat = "used superseded rule" if r.get("cites_stale") else "wrong answer"
         if cat:
@@ -237,11 +238,11 @@ def to_markdown(results: dict, generate: bool) -> str:
                   "- **Correct:** answer matches the gold answer's key facts (LLM judge), over *all* answerable questions; abstaining counts as not correct.",
                   "- **Abstention acc.:** share of the unanswerable questions where the system said it could not answer.",
                   "- The score gate applies only to re-ranker configurations; the others rely on the LLM's own abstention.",
-                  "\n## Abstention threshold sweep (full system)\n",
+                  f"\n## Abstention threshold sweep (full system: {results['full']})\n",
                   "| Threshold | Abstains on unanswerable | Answers answerable | Correct on answerable |", "|---|---|---|---|"]
         lines += [f"| {r['threshold']} | {pct(r['abstain_on_unanswerable'])} | {pct(r['answered_answerable'])} | {pct(r['correct_answerable'])} |"
                   for r in results["sweep"]]
-    lines += ["\n## Full system by question type\n",
+    lines += [f"\n## Full system ({results['full']}) by question type\n",
               "| Type | n | Recall@5 |" + (" Correct (abstained, for unanswerable) |" if generate else ""),
               "|---|---|---|" + ("---|" if generate else "")]
     for t, s in results["by_type"].items():
@@ -251,7 +252,7 @@ def to_markdown(results: dict, generate: bool) -> str:
         fs = results["failures"]
         counts = ", ".join(f"{c}: {sum(f['category'] == c for f in fs)}" for c in FAILURE_ORDER
                            if any(f["category"] == c for f in fs))
-        lines += [f"\n## Failures (full system)\n\n{len(fs)} of {results['n_answerable'] + results['n_unanswerable']} "
+        lines += [f"\n## Failures (full system: {results['full']})\n\n{len(fs)} of {results['n_answerable'] + results['n_unanswerable']} "
                   f"questions. {counts}.\n",
                   "| Id | Type | Category | Question | Evidence rank | System answer |", "|---|---|---|---|---|---|"]
         lines += [f"| {f['id']} | {f['type']} | {f['category']} | {clip(f['question'], 90)} | {f['rank'] or '-'} | "
@@ -261,12 +262,12 @@ def to_markdown(results: dict, generate: bool) -> str:
 
 def build_report(rows: dict, gold: list[dict], threshold: float, generate: bool) -> dict:
     """Every summary table from the per-question rows; used after a run and by --report."""
-    full = list(rows)[-1]
+    full = FULL_SYSTEM if FULL_SYSTEM in rows else list(rows)[-1]
     mode = CONFIGS[full][0]
     results = {"threshold": threshold, "n_answerable": sum(q["type"] != "unanswerable" for q in gold),
                "n_unanswerable": sum(q["type"] == "unanswerable" for q in gold),
                "summary": {n: summarize(rs, CONFIGS[n][0], threshold, generate) for n, rs in rows.items()},
-               "sweep": [], "failures": [], "rows": rows}
+               "full": full, "sweep": [], "failures": [], "rows": rows}
     if generate:
         results.update(sweep=threshold_sweep(rows[full]), by_type=by_type(rows[full], mode, threshold),
                        failures=failures(rows[full], gold, mode, threshold))

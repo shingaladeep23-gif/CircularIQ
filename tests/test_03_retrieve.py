@@ -52,7 +52,6 @@ def test_scores_sorted_and_k_respected(retriever):
 
 def search(page, app_url, question, mode=None):
     page.goto(app_url)
-    page.get_by_text("Rewrite query").click()  # retrieval tests use the question verbatim
     if mode:
         page.get_by_text(mode, exact=True).click()
     box = page.get_by_label("Ask a question about RBI circulars")
@@ -78,7 +77,6 @@ def test_search_page_mode_switch(page, app_url):
 def test_example_button_fills_question_and_searches(page, app_url):
     """Playwright: clicking an example question fills the box and runs retrieval."""
     page.goto(app_url)
-    page.get_by_text("Rewrite query").click()
     page.get_by_role("button", name="How often must banks test their note sorting machines?").click()
     expect(page.get_by_label("Ask a question about RBI circulars")).to_have_value(
         "How often must banks test their note sorting machines?", timeout=30_000)

@@ -57,11 +57,14 @@ def build_context(sources: list[dict]) -> str:
 
 
 def normalize_markers(raw: str) -> str:
-    """Small models drift from '[S1]': accept '[Source S1]', '[S1, S3]', '[S1 and S2]' -> '[S1][S3]'."""
+    """Small models drift from '[S1]': accept '[Source S1]', '[S1, S3]', '[S1 and S2]', '[S1-S3]' -> '[S1][S3]'."""
     def fix(m):
-        return "".join(f"[S{n}]" for n in re.findall(r"S\s*(\d+)", m.group(1)))
+        nums = []
+        for a, b in re.findall(r"S\s*(\d+)(?:\s*[-–]\s*S?\s*(\d+))?", m.group(1)):
+            nums += range(int(a), int(b or a) + 1)
+        return "".join(f"[S{n}]" for n in nums)
 
-    return re.sub(r"\[((?:\s*(?:Sources?\s*)?S\s*\d+\s*(?:,|and|&)?)+)\]", fix, raw)
+    return re.sub(r"\[((?:\s*(?:Sources?\s*)?S\s*\d+(?:\s*[-–]\s*S?\s*\d+)?\s*(?:,|and|&)?)+)\]", fix, raw)
 
 
 def render(raw: str, sources: list[dict]) -> tuple[str, list[int]]:
@@ -79,7 +82,7 @@ def render(raw: str, sources: list[dict]) -> tuple[str, list[int]]:
     return re.sub(r"[ \t]+([.,;])", r"\1", text).strip(), sorted(set(used))
 
 
-def answer(question: str, retriever, llm=chat, use_rewrite: bool = True, mode: str = "rerank",
+def answer(question: str, retriever, llm=chat, use_rewrite: bool = False, mode: str = "rerank",
            min_score: float = MIN_RERANK_SCORE, hits: list[dict] | None = None, query: str | None = None) -> dict:
     """hits/query let the evaluator reuse retrieval it already ran; min_score=0 disables the gate."""
     if query is None:
