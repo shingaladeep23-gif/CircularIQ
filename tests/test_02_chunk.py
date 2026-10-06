@@ -91,3 +91,13 @@ def test_browser_rendered_text_is_fully_chunked(page):
     boiler = re.compile(r"^(RBI/|October \d|The Chairman|Madam|Yours faithfully|\(Sanjeev|Encl)")
     missing = [t for t in (re.sub(r"\s+", " ", s).strip() for s in shown) if t and not boiler.match(t) and t not in corpus]
     assert missing == []
+
+
+def test_short_circulars_carry_lead_paragraph_for_indexing():
+    from circulariq.retrieve import doc_text
+
+    short = chunks(13578)  # 4 chunks
+    lead = " ".join(short[0]["text"].split()[:60])
+    assert "lead" not in short[0] and all(c["lead"] == lead for c in short[1:])
+    assert lead in doc_text(short[2]) and lead not in short[2]["text"]  # indexed, never cited
+    assert not any("lead" in c for c in chunks(13723))  # long Master Direction: preamble is generic

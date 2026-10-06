@@ -41,6 +41,15 @@ def test_render_maps_markers_to_citations_and_drops_bogus_ones():
     assert used == [1, 2]
 
 
+def test_citation_marker_variants_are_normalised():
+    from circulariq.answer import normalize_markers
+
+    assert normalize_markers("[Source S1] Boards delegate.") == "[S1] Boards delegate."
+    assert normalize_markers("Tested quarterly [S1, S3].") == "Tested quarterly [S1][S3]."
+    assert normalize_markers("x [S2 and S4] y [Sources S5]") == "x [S2][S4] y [S5]"
+    assert normalize_markers("see [RBI/2026-27/279, Para 2]") == "see [RBI/2026-27/279, Para 2]"  # untouched
+
+
 def test_answer_cites_real_paragraph(retriever):
     llm = FakeLLM("note sorting machine testing frequency accuracy",
                   "Banks must test note sorting machines quarterly for accuracy and consistency [S1].")
@@ -123,6 +132,7 @@ def test_ui_answers_with_clickable_citation(page, app_url):
     ans = page.locator(".st-key-answer")
     expect(ans).to_contain_text("RBI/DCM/2026-27/473", timeout=180_000)
     expect(ans).to_contain_text("quarter")
+    expect(page.locator("[class*='st-key-hit-']").filter(has_text="cited in answer").first).to_contain_text("RBI/DCM/2026-27/473")
     expect(ans.get_by_role("link", name="RBI/DCM/2026-27/473").first).to_have_attribute("href", "https://rbi.org.in/Scripts/NotificationUser.aspx?Id=13723&Mode=0")
 
 

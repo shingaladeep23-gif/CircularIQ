@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 RAW = Path("data/raw")
 OUT = Path("data/chunks.jsonl")
 MAX_WORDS = 350  # ~450 tokens, under bge-small's 512-token limit
+LEAD_WORDS = 60  # lead paragraph carried into the index header of short circulars
+SHORT_CIRCULAR = 10  # chunks; longer documents open with generic legal preamble, so no lead
 PAGE = "https://rbi.org.in/Scripts/NotificationUser.aspx?Id={}&Mode=0"
 
 NUM_RE = re.compile(r"^(\d{1,2}(?:\.\d{1,2}){1,3}|\d{1,2}(?=\.))\.?\s*(?=[A-Z(\"'‘“])")  # "2. On", "2.1 A", not "30 days"/"2.5 per cent"
@@ -153,6 +155,12 @@ def chunk_circular(meta: dict, html: str) -> list[dict]:
                 "url": PAGE.format(meta["id"]),
                 "references": meta.get("references", []),  # older circulars this one cites (recency)
             })
+    # In short circulars the answer paragraph ("2. ... dispense with the above requirements") often
+    # never names its subject; the lead paragraph does. Carry it as index-only context.
+    if 1 < len(chunks) <= SHORT_CIRCULAR:
+        lead = " ".join(chunks[0]["text"].split()[:LEAD_WORDS])
+        for c in chunks[1:]:
+            c["lead"] = lead
     return chunks
 
 

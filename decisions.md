@@ -271,3 +271,75 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 - Questions were written by reading each circular's chunks, with answers taken only from the text, and phrased to avoid copying the source wording except where the type requires it (`exact-id`, `table`).
 - The set lives in `data/make_gold.py` (readable Python, one `add()` per question) and is generated into `data/gold.jsonl`.
 - **Known limit:** One author wrote all questions, so phrasing has a single style. A second annotator writing 20 more questions blind (without reading the chunks first) would be the best next improvement to the eval.
+
+---
+
+## 6. Evaluation (Day 5)
+
+### D6.1 Retrieval metrics: Recall@5 and MRR@10 — *done*
+- **Recall@5:** Was any relevant chunk (D5.2) in the top 5? Five is what the LLM sees, so this is the ceiling on answer quality.
+- **MRR@10:** 1/rank of the first relevant chunk, 0 if it's outside the top 10. Cut at 10 so a hit at rank 40 doesn't earn credit the generator never benefits from.
+- Computed over the 67 answerable questions only.
+
+### D6.2 Faithfulness: claim-level LLM judge — *done*
+- The raw answer is split into sentences. Each sentence is judged YES/NO against **only the passages it cites** (all five, if it cites none). Faithfulness = supported sentences / all sentences, averaged over answered questions.
+- **Rejected:** Judging the whole answer at once (one unsupported sentence hides among supported ones); RAGAS and similar libraries (another dependency and another LLM wrapper, and the brief asks for a hand-written eval loop).
+- **Judging against the cited passage, not all retrieved ones,** catches mis-citation: a true statement attributed to the wrong paragraph fails. That matters in compliance, where the citation is what gets checked.
+
+### D6.3 Correctness: a second judge question against the gold answer — *done*
+- **Added beyond the brief.** Faithfulness alone can't catch an answer that is perfectly supported by an *outdated* circular. "Correct" asks whether the answer states the same key facts as the gold answer.
+- Computed over **all** answerable questions; abstaining counts as not correct. Otherwise a system that abstains on everything hard would look perfect.
+- The rows also record `cites_evidence` and `cites_stale`, for the recency analysis.
+
+### D6.4 The judge is the same local qwen2.5:3b — *done, with a spot check*
+- **Chosen:** Reuse the local model, temperature 0, YES/NO only.
+- **Rejected:** A stronger hosted judge (breaks the offline choice, D0.1).
+- **Known bias:** A model judging its own outputs is lenient. Mitigation: the brief's hand spot-check, done on a sample and reported in the results.
+
+### D6.5 Abstention threshold chosen from a sweep, not guessed — *done*
+- The eval runs generation with the gate *disabled* and stores each question's top re-ranker score, then applies the gate afterwards at several thresholds (0 to 0.5). This yields a trade-off table (unanswerable questions caught vs. answerable questions still answered) with zero extra LLM calls.
+- **Caveat:** The threshold is picked on the same 82 questions it is measured on. With only 15 negatives, the abstention number is optimistic; a held-out set would be needed for an unbiased figure.
+
+### D6.6 Every LLM call is cached on disk — *done*
+- `data/eval/llm_cache.jsonl`, keyed by a SHA-1 of the exact messages. Re-running the eval after a metrics-only change costs nothing, and results are reproducible.
+- The cache *is* committed. It is the raw evidence behind the reported numbers.
+
+### D6.7 Ablation configurations — *done*
+- BM25 only → dense only → hybrid (RRF) → hybrid + re-ranker → hybrid + re-ranker + query rewrite (the full system).
+- All five share the same answer prompt and LLM; only retrieval differs. The score gate exists only where re-ranker scores exist.
+- **Omitted:** A `bge-reranker-base` row. At about 45 s per query on CPU, it would add about an hour of compute to show what the 4-probe comparison in D4.1 already indicated. Add it if a GPU becomes available (`CIRCULARIQ_RERANKER=BAAI/bge-reranker-base`).
+
+### D6.8 Evaluation tab in the UI — *done*
+- The app's second tab renders `data/eval/results.md`, so a demo shows the ablation table next to the live system. A Playwright test checks the four configuration rows render.
+
+### D6.9 Lead-paragraph context for short circulars (an experiment driven by eval failures) — *done, kept*
+- **Observation (first retrieval run):** 4 of the 5 full-system misses were the same failure. The right circular *was* retrieved, but as its context paragraph ("Please refer to … temporary withdrawal of the interest rate ceiling on FCNR(B)…"). The answering paragraph ("5. … substituted with 'until August 31, 2026'", or "2. … dispense with the above reporting requirements") never names its subject, so neither BM25 nor dense could match it.
+- **Change:** In circulars with ≤ 10 chunks, every chunk after the first carries the first 60 words of the lead paragraph as an index-only `lead` field, added to the BM25 text, the embedding text and the re-ranker input, but **not** to the cited text or the gold-matching text.
+- **Rejected alternatives:**
+  - *Merging small paragraphs into bigger chunks:* loses paragraph-level citations, and long Directions would get blurrier chunks.
+  - *LLM-written context per chunk ("contextual retrieval"):* 5,679 LLM calls on a 3B model, non-deterministic, and slow to rebuild.
+  - *Neighbour expansion at answer time:* helps the LLM but not retrieval, which is where the miss was.
+- **Long Directions excluded:** Their lead paragraph is generic legal preamble ("In exercise of the powers conferred…"), which would add the same noise to hundreds of chunks.
+- **Result (same gold set, same models):**
+
+  | Configuration | Recall@5 | MRR@10 |
+  |---|---|---|
+  | BM25 only | 86.6% → 88.1% | 0.659 → 0.718 |
+  | Dense only | 85.1% → 88.1% | 0.676 → 0.680 |
+  | Hybrid (RRF) | 89.6% → 91.0% | 0.720 → 0.766 |
+  | Hybrid + re-ranker | 92.5% → 95.5% | 0.831 → 0.836 |
+
+  Full system: fixed q07, q22, q36; broke q20.
+- **New failure it introduced ("sibling crowding"):** All chunks of a short circular now share the lead, so they compete with each other. In q20, the Maldives line-of-credit amount is in para 1 but ranked 6th, behind paras 2–6 of the same circular.
+- **Deliberately not tuned further:** The remaining misses (q20, q30, q35) are all at ranks 6–7. More changes measured on these 67 questions would start fitting the eval set rather than the problem. A per-circular cap in the top 5, or showing the lead to the LLM, are the next things to try against a fresh question set.
+
+### D6.10 Tolerate citation-marker variants, but still reject uncited answers — *done*
+- **Found during the eval run:** 8 of the first 42 answers had no `[S#]` marker. Reading all 8:
+  - **1 was a legitimate citation in a variant format:** `[Source S1] The Board can delegate…`. `normalize_markers()` now rewrites `[Source S1]`, `[S1, S3]` and `[S2 and S4]` to `[S1][S3]` before rendering. A test pins this, including that real `[RBI/…, Para 2]` citations are left untouched.
+  - **7 were genuinely uncited**, and D4.4's "uncited = abstain" rule was right to block them. Two of them gave the *stale* September 30, 2026 date on recency questions. Another claimed a circular was *not* withdrawn when the withdrawal table lists it. Without the rule, all three wrong answers would have reached the user.
+- **Why stop and restart the eval:** The marker bug would have counted correct, cited answers as abstentions in every configuration, understating all of them. The disk cache (D6.6) meant the restart replayed the finished questions without new LLM calls.
+
+### D6.11 Eval runtime on this machine — *observed*
+- `ollama ps` during the eval: qwen2.5:3b at 4096 context occupies 2.4 GB, split **38% CPU / 62% GPU**. Model weights plus KV cache exceed the GTX 1050's 3 GB, so part of every forward pass runs on the CPU.
+- One question costs 1 answer call + 1 judge call per answer sentence + 1 correctness call. The 5-configuration eval takes a few hours, so the disk cache (D6.6) matters.
+- **Not done (upgrade path):** `OLLAMA_FLASH_ATTENTION=1` with `OLLAMA_KV_CACHE_TYPE=q8_0` roughly halves KV-cache memory and would likely fit the model fully on the GPU. Not switched mid-run, to keep all configurations' generations comparable.

@@ -56,6 +56,14 @@ def build_context(sources: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
+def normalize_markers(raw: str) -> str:
+    """Small models drift from '[S1]': accept '[Source S1]', '[S1, S3]', '[S1 and S2]' -> '[S1][S3]'."""
+    def fix(m):
+        return "".join(f"[S{n}]" for n in re.findall(r"S\s*(\d+)", m.group(1)))
+
+    return re.sub(r"\[((?:\s*(?:Sources?\s*)?S\s*\d+\s*(?:,|and|&)?)+)\]", fix, raw)
+
+
 def render(raw: str, sources: list[dict]) -> tuple[str, list[int]]:
     """Replace [S2] markers with real citations; drop markers pointing at sources that weren't given."""
     used = []
@@ -71,17 +79,20 @@ def render(raw: str, sources: list[dict]) -> tuple[str, list[int]]:
     return re.sub(r"[ \t]+([.,;])", r"\1", text).strip(), sorted(set(used))
 
 
-def answer(question: str, retriever, llm=chat, use_rewrite: bool = True, mode: str = "rerank") -> dict:
-    query = rewrite(question, llm) if use_rewrite else question
-    hits = retriever.search(query, mode=mode, k=TOP_K)
+def answer(question: str, retriever, llm=chat, use_rewrite: bool = True, mode: str = "rerank",
+           min_score: float = MIN_RERANK_SCORE, hits: list[dict] | None = None, query: str | None = None) -> dict:
+    """hits/query let the evaluator reuse retrieval it already ran; min_score=0 disables the gate."""
+    if query is None:
+        query = rewrite(question, llm) if use_rewrite else question
+    hits = retriever.search(query, mode=mode, k=TOP_K) if hits is None else hits[:TOP_K]
     out = {"question": question, "query": query, "hits": hits, "sources": [], "cited": [], "raw": "", "abstained": True}
     # gate: if the best re-ranked passage is barely relevant, abstain without asking the LLM
-    if not hits or (mode == "rerank" and hits[0]["score"] < MIN_RERANK_SCORE):
+    if not hits or (mode == "rerank" and hits[0]["score"] < min_score):
         out["answer"] = ABSTAIN
         return out
     sources = sorted(hits, key=lambda h: h["date"], reverse=True)  # newest first
-    raw = llm([{"role": "system", "content": SYSTEM},
-               {"role": "user", "content": f"Sources:\n\n{build_context(sources)}\n\nQuestion: {question}"}])
+    raw = normalize_markers(llm([{"role": "system", "content": SYSTEM},
+                                 {"role": "user", "content": f"Sources:\n\n{build_context(sources)}\n\nQuestion: {question}"}]))
     text, used = render(raw, sources)
     abstained = ABSTAIN.rstrip(".").lower() in raw.lower() or not used  # an uncited answer is not trusted
     out.update(sources=sources, raw=raw, cited=used, abstained=abstained, answer=ABSTAIN if abstained else text)

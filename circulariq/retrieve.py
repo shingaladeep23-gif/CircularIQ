@@ -40,8 +40,10 @@ def reranker():
 
 
 def doc_text(c: dict) -> str:
-    """What gets embedded: the chunk plus its circular title and section, so short paragraphs keep context."""
-    return f"{c['title']}\n{c['section']}\n{c['text']}"
+    """What gets indexed: the chunk plus its circular title, section and (short circulars) lead
+    paragraph, so paragraphs that never name their subject stay findable. Citations use c['text'] only."""
+    lead = f"{c['lead']}\n" if c.get("lead") else ""
+    return f"{c['title']}\n{c['section']}\n{lead}{c['text']}"
 
 
 def tokenize(text: str) -> list[str]:
