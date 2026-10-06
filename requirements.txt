@@ -1,0 +1,9 @@
+requests
+beautifulsoup4
+sentence-transformers
+faiss-cpu
+rank-bm25
+openai
+streamlit
+pytest
+pytest-playwright

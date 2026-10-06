@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+test-results/
+.env
+data/raw/html/
+data/chunks.jsonl
+data/index/

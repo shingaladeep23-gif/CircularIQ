@@ -1,0 +1,3 @@
+#!/bin/sh
+# Block the commit unless the full test suite (unit + Playwright browser tests) passes.
+PYTHONIOENCODING=utf-8 python -m pytest || { echo "pre-commit: tests failed, commit aborted"; exit 1; }
