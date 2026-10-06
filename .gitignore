@@ -5,3 +5,4 @@ test-results/
 data/raw/html/
 data/chunks.jsonl
 data/index/
+data/cache/

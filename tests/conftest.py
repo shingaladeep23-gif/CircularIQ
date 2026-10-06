@@ -16,6 +16,33 @@ FX = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).parent.parent
 
 
+class FakeLLM:
+    """Returns scripted replies in order and records every prompt (and model) it was sent."""
+
+    def __init__(self, *replies):
+        self.replies, self.calls, self.models = list(replies), [], []
+
+    def __call__(self, messages, temperature=0.0, model=None):
+        self.calls.append(messages)
+        self.models.append(model)
+        return self.replies.pop(0)
+
+
+class PromptLLM(FakeLLM):
+    """Replies by prompt content: the first (substring, reply) rule matching the last message wins.
+    For pipelines whose call order depends on routing and retries."""
+
+    def __init__(self, rules: list[tuple[str, str]], default: str = "NO"):
+        super().__init__()
+        self.rules, self.default = rules, default
+
+    def __call__(self, messages, temperature=0.0, model=None):
+        self.calls.append(messages)
+        self.models.append(model)
+        text = messages[-1]["content"]
+        return next((reply for key, reply in self.rules if key in text), self.default)
+
+
 @pytest.fixture(scope="session")
 def fixture_chunks():
     metas = [json.loads(l) for l in (FX / "manifest.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -43,7 +70,8 @@ def app_url(fixture_index):
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
-    env = {**os.environ, "CIRCULARIQ_INDEX": str(fixture_index), "PYTHONIOENCODING": "utf-8"}
+    env = {**os.environ, "CIRCULARIQ_INDEX": str(fixture_index), "PYTHONIOENCODING": "utf-8",
+           "CIRCULARIQ_CACHE": str(fixture_index / "semantic_cache.jsonl")}  # never touch the real cache
     proc = subprocess.Popen(
         [sys.executable, "-m", "streamlit", "run", "app.py", "--server.headless=true",
          f"--server.port={port}", "--browser.gatherUsageStats=false"],

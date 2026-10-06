@@ -72,8 +72,15 @@ def rrf(rankings: list[list[int]], k: int = RRF_K) -> list[tuple[int, float]]:
     return sorted(scores.items(), key=lambda x: -x[1])
 
 
-def build(chunks: list[dict], index_dir: Path = INDEX_DIR):
+def build(chunks: list[dict], index_dir: Path = INDEX_DIR, cache_path: Path | None = None):
+    """cache_path: the semantic cache to invalidate for circulars whose text changed (None = leave caches alone)."""
     index_dir.mkdir(parents=True, exist_ok=True)
+    old = index_dir / "chunks.jsonl"
+    if cache_path and cache_path.exists() and old.exists():
+        from circulariq.cache import SemanticCache, changed_circulars
+
+        changed, added = changed_circulars([json.loads(l) for l in old.open(encoding="utf-8")], chunks)
+        print(f"semantic cache: dropped {SemanticCache(cache_path).invalidate(changed, added)} stale entries")
     vecs = embedder().encode([doc_text(c) for c in chunks], batch_size=32, normalize_embeddings=True, show_progress_bar=True)
     index = faiss.IndexFlatIP(vecs.shape[1])  # exact cosine search (vectors are normalised)
     index.add(np.asarray(vecs, dtype="float32"))
@@ -133,5 +140,7 @@ if __name__ == "__main__":
         for h in Retriever().search(" ".join(sys.argv[1:]))[:5]:
             print(f"{h['score']:.4f}  {h['ref']}  para {h['para']}  {h['text'][:100]}")
     else:
-        build([json.loads(l) for l in open("data/chunks.jsonl", encoding="utf-8")])
+        from circulariq.cache import CACHE_PATH
+
+        build([json.loads(l) for l in open("data/chunks.jsonl", encoding="utf-8")], cache_path=CACHE_PATH)
         print(f"index written to {INDEX_DIR}")

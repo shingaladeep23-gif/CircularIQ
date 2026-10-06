@@ -8,18 +8,8 @@ import urllib.request
 import pytest
 from playwright.sync_api import expect
 
-from circulariq.answer import ABSTAIN, answer, build_context, render, rewrite
-
-
-class FakeLLM:
-    """Returns scripted replies in order and records every prompt it was sent."""
-
-    def __init__(self, *replies):
-        self.replies, self.calls = list(replies), []
-
-    def __call__(self, messages, temperature=0.0):
-        self.calls.append(messages)
-        return self.replies.pop(0)
+from circulariq.answer import ABSTAIN, Config, answer, build_context, render, rewrite
+from conftest import FakeLLM
 
 
 def test_reranker_puts_answering_paragraph_first(retriever):
@@ -55,7 +45,7 @@ def test_citation_marker_variants_are_normalised():
 def test_answer_cites_real_paragraph(retriever):
     llm = FakeLLM("note sorting machine testing frequency accuracy",
                   "Banks must test note sorting machines quarterly for accuracy and consistency [S1].")
-    r = answer("how often are NSMs tested?", retriever, llm=llm, use_rewrite=True)
+    r = answer("how often are NSMs tested?", retriever, Config(rewrite=True), llm)
     assert not r["abstained"]
     cited = r["sources"][r["cited"][0] - 1]
     assert (cited["nid"], cited["para"]) == (13723, "7")
@@ -67,18 +57,18 @@ def test_answer_cites_real_paragraph(retriever):
 
 
 def test_llm_abstention_is_respected(retriever):
-    r = answer("note sorting machines", retriever, llm=FakeLLM(ABSTAIN), use_rewrite=False)
+    r = answer("note sorting machines", retriever, llm=FakeLLM(ABSTAIN))
     assert r["abstained"] and r["answer"] == ABSTAIN
 
 
 def test_uncited_answer_is_treated_as_abstention(retriever):
-    r = answer("note sorting machines", retriever, llm=FakeLLM("Machines are great."), use_rewrite=False)
+    r = answer("note sorting machines", retriever, llm=FakeLLM("Machines are great."))
     assert r["abstained"] and r["answer"] == ABSTAIN
 
 
 def test_low_relevance_gate_skips_llm(retriever):
     llm = FakeLLM()  # any call would raise IndexError
-    r = answer("What is the capital gains tax rate on mutual funds?", retriever, llm=llm, use_rewrite=False)
+    r = answer("What is the capital gains tax rate on mutual funds?", retriever, llm=llm)
     assert r["abstained"] and llm.calls == []
 
 

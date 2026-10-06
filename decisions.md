@@ -419,3 +419,48 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 ### D7.5 Demo artefacts are committed — *done*
 - `docs/demo.webm` (6 MB) and three PNG screenshots, produced by `scripts/record_demo.py` against the full index and real LLM. The README example answer is copied from that run, not written by hand.
 - **Trade-off:** Each re-recording adds about 6 MB to git history. Acceptable for a portfolio repo; switch to a GitHub release asset if it gets re-recorded often.
+
+---
+
+## 8. Phase 2: semantic cache, query router, corrective RAG
+
+Requested after the 7-day plan, as separate modules behind config flags so each can be ablated. Pipeline order as specified:
+Question → semantic cache → router → (rewrite) → hybrid retrieve + re-rank → score gate → corrective RAG → LLM + citations.
+
+### D8.1 One `Config` dataclass, one pipeline — *done*
+- `answer.Config(mode, rewrite, router, crag, semantic_cache, min_score, top_k)`. `answer(question, retriever, cfg, llm, cache)` runs the stages whose flags are on. The evaluator's `CONFIGS` maps each ablation row to a `Config`, and the UI builds one from its toggles.
+- **Rejected:** Separate pipeline functions per feature combination (2³ variants to keep in sync); a plugin/hook registry (an abstraction for three fixed stages).
+- **Invariant, tested:** All flags off = exactly one LLM call with the same prompt the Day 5 eval measured. The existing eval cache stays valid and the baseline rows are unchanged.
+
+### D8.2 Semantic cache: cosine ≥ 0.95 **and** an exact signature match — *done*
+- **Chosen:** bge-small question embeddings (the retriever's model, already loaded). A hit needs cosine ≥ 0.95 **and** an identical signature: entity types (14 regulated-entity patterns), acronyms (FCNR, NRE, ECB, CRR…) and codes/numbers (R343, 2026-27, ₹2 lakh).
+- **Why the signature:** This corpus issues near-identical circulars per entity type. "…exempt from CRR for **commercial banks**?" and "…for **small finance banks**?" embed almost identically, and the same goes for FCNR(B) vs NRE and R343 vs R006. A pure cosine threshold would serve one entity's answer to the other, a silent wrong answer, the worst failure for compliance. Tested with cosine fixed at 1.0: the signature mismatch still blocks the hit.
+- **Invalidation:** `retrieve.build(..., cache_path=…)` diffs the old and new index. Entries citing a circular whose text changed or disappeared are dropped, and when new circulars are added, cached *abstentions* are dropped too (the new text might answer them). Only the CLI rebuild passes the cache path, so test fixture indexes can never wipe the real cache.
+- **Storage:** JSONL (`data/cache/semantic.jsonl`, gitignored), brute-force cosine over entries in numpy. **Upgrade path:** a FAISS index over cached questions if the cache grows past ~100k entries.
+- **Rejected:** Redis or a vector DB (a server for a single-user tool); exact-string caching only (misses trivial rephrasings).
+
+### D8.3 Query router: small-model classifier, per-route settings in one table — *done*
+- `router.classify` asks **qwen2.5:1.5b** for one of four labels (few-shot prompt). An unparseable reply falls back to `simple`, so a router hiccup never becomes a silent abstention.
+- `router.ROUTES`:
+
+  | Route | Retrieval | Passages to LLM | Model |
+  |---|---|---|---|
+  | simple | as baseline | 3 | qwen2.5:1.5b |
+  | comparison | one query per side (LLM split) + the original, fused with RRF | 8 | qwen2.5:3b |
+  | unclear | LLM rewrite, then baseline | 5 | qwen2.5:3b |
+  | out_of_scope | none (abstain at once) | 0 | — |
+
+- **Why "unclear → rewrite" only:** Rewriting every question hurt (D6.14); the router limits it to the questions that need it.
+- **Model pair:** 1.5B and 3B are the only pair that fits the 3 GB GPU. The cost/quality trade-off is the question this row answers.
+- **Gold set extended** with 7 `comparison` questions (q83–q89) whose evidence spans two circulars. They score as retrieved only when **all** evidence is in the top k (`evaluate.evidence_rank`). They are appended at the end so q01–q82 keep their ids and earlier results stay joinable.
+
+### D8.4 Corrective RAG: grade → retry with a *different* query → abstain — *done*
+- After the score gate, the LLM grades whether the top passages contain the answer (YES/NO). On NO, it writes a new query, shown every query already tried and told not to repeat them, and retrieval runs again. At most 2 retries; if no round passes, the pipeline abstains without generating.
+- Stops early if the model repeats a query (another round would repeat the failure).
+- **Bug caught in a smoke test:** On the comparison route, a retry searched a single query and *replaced* the per-side fused results. Retries now extend the fusion (`fused_search(queries + [new])`); a test pins it.
+- **Expectation, stated before measuring:** Abstention on unanswerable questions is already 100%, so CRAG's possible gain is converting retrieval misses and false abstentions. Its risk is extra false abstentions when a 3B grader says NO to good passages.
+
+### D8.5 Evaluation plumbing for the new rows — *done*
+- `run_config` now calls the real pipeline (gate disabled at run time, applied afterwards from `top_score`, as before) and records `route`, `crag`, and wall-clock `seconds` per question.
+- `CachedLLM` keys on `[model, messages]` when a non-default model is used, and on `messages` alone otherwise, so the 1.5B and 3B answers never collide and all pre-router cache entries stay valid (tested).
+- `--only` re-runs selected rows and keeps the rest from `results.json`.

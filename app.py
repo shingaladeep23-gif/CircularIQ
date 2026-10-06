@@ -3,7 +3,8 @@ from pathlib import Path
 
 import streamlit as st
 
-from circulariq.answer import ABSTAIN, TOP_K, answer, citation
+from circulariq.answer import ABSTAIN, SEARCH_K, Config, answer, citation
+from circulariq.cache import SemanticCache
 from circulariq.retrieve import Retriever
 
 RESULTS = Path(__file__).parent / "data" / "eval" / "results.md"
@@ -14,6 +15,11 @@ st.set_page_config(page_title="CircularIQ", page_icon="📑", layout="wide")
 @st.cache_resource
 def retriever():
     return Retriever()
+
+
+@st.cache_resource
+def semantic_cache():
+    return SemanticCache()
 
 
 def linked(text: str, sources: list[dict]) -> str:
@@ -44,20 +50,27 @@ with ask:
     for col, ex in zip(st.columns(len(EXAMPLES)), EXAMPLES):
         col.button(ex, on_click=use_example, args=(ex,), width="stretch")
     q = st.text_input("Ask a question about RBI circulars", key="question")
-    c1, c2 = st.columns([3, 1])
+    c1, c2, c3 = st.columns([2, 1, 1])
     mode = c1.radio("Retrieval", ["rerank", "hybrid", "bm25", "dense"], horizontal=True, key="mode",
                     help="rerank = hybrid (BM25 + dense, RRF) top 50, re-scored by a cross-encoder")
     use_rewrite = c2.toggle("Rewrite query", value=False, key="rewrite",
                             help="LLM rewrites the question before search. Off by default: it lowered Recall@5 in the eval.")
+    use_router = c2.toggle("Route by question type", value=False, key="router",
+                           help="Small model sorts the question: simple / comparison / out of scope / unclear.")
+    use_crag = c3.toggle("Corrective RAG", value=False, key="crag",
+                         help="Grade the passages; if they don't answer, search again (up to 2 times), else abstain.")
+    use_cache = c3.toggle("Semantic cache", value=False, key="semcache",
+                          help="Reuse the answer to a near-identical earlier question (same entities and codes).")
+    cfg = Config(mode=mode, rewrite=use_rewrite, router=use_router, crag=use_crag, semantic_cache=use_cache)
 
     if q:
         with st.spinner("Searching circulars and drafting an answer..."):
             try:
-                r = answer(q, retriever(), use_rewrite=use_rewrite, mode=mode)
+                r = answer(q, retriever(), cfg, cache=semantic_cache())
             except Exception as e:  # LLM unreachable: still show what retrieval found
                 st.error(f"LLM unavailable ({type(e).__name__}); showing retrieved passages only.")
                 r = {"abstained": True, "answer": ABSTAIN, "query": q, "sources": [],
-                     "hits": retriever().search(q, mode, k=TOP_K)}
+                     "hits": retriever().search(q, mode, k=SEARCH_K)}
 
         with st.container(border=True, key="answer"):
             st.markdown("#### Answer")
@@ -65,8 +78,19 @@ with ask:
                 st.warning(r["answer"])
             else:
                 st.markdown(linked(r["answer"], r["sources"]))
-        if use_rewrite:
-            st.caption(f"Search query: {r['query']}")
+        trace = []
+        if r.get("cache"):
+            trace.append(f"semantic cache hit ({r['cache']['similarity']:.3f}) for: {r['cache']['matched']}")
+        if r.get("route"):
+            trace.append(f"route: {r['route']}")
+        if len(r.get("queries", [])) > 1 or r.get("query", q) != q:
+            trace.append("search queries: " + " | ".join(r.get("queries") or [r["query"]]))
+        if r.get("crag"):
+            c = r["crag"]
+            trace.append(f"corrective RAG: {'relevant' if c['relevant'] else 'not relevant'} after {c['retries']} "
+                         f"retr{'y' if c['retries'] == 1 else 'ies'}" + (f" ({' | '.join(c['queries'][1:])})" if c["retries"] else ""))
+        if trace:
+            st.caption(" · ".join(trace), help="What the pipeline did for this question")
 
         st.subheader(f"Retrieved passages ({mode})")
         if not r["hits"]:

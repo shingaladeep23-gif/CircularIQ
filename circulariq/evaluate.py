@@ -5,23 +5,31 @@ python -m circulariq.evaluate --validate        check every gold quote exists in
 python -m circulariq.evaluate                   run all configs -> data/eval/results.{json,md}
 python -m circulariq.evaluate --retrieval-only  skip the LLM (fast)
 python -m circulariq.evaluate --report --threshold 0.1   re-summarise saved rows at another threshold
+python -m circulariq.evaluate --only "Hybrid + re-ranker + CRAG"   run one row, keep the others
 """
 import argparse
+import dataclasses
 import hashlib
 import json
 import re
+import time
 from pathlib import Path
+
+from circulariq.answer import Config
 
 GOLD = Path("data/gold.jsonl")
 OUT = Path("data/eval")
 
-# name -> (retrieval mode, rewrite query with the LLM?)
+# one ablation row per configuration; every later row switches one feature on top of the shipped system
 CONFIGS = {
-    "BM25 only": ("bm25", False),
-    "Dense only": ("dense", False),
-    "Hybrid (RRF)": ("hybrid", False),
-    "Hybrid + re-ranker": ("rerank", False),
-    "Hybrid + re-ranker + rewrite": ("rerank", True),
+    "BM25 only": Config(mode="bm25"),
+    "Dense only": Config(mode="dense"),
+    "Hybrid (RRF)": Config(mode="hybrid"),
+    "Hybrid + re-ranker": Config(),
+    "Hybrid + re-ranker + rewrite": Config(rewrite=True),
+    "Hybrid + re-ranker + router": Config(router=True),
+    "Hybrid + re-ranker + CRAG": Config(crag=True),
+    "Hybrid + re-ranker + router + CRAG": Config(router=True, crag=True),
 }
 FULL_SYSTEM = "Hybrid + re-ranker"  # what ships: rewriting lowered recall and correctness (see results)
 THRESHOLDS = [0.0, 0.01, 0.02, 0.05, 0.1, 0.2, 0.3, 0.5]
@@ -70,6 +78,16 @@ def first_relevant_rank(hits: list[dict], evidence: list[dict]) -> int | None:
     return next((r for r, h in enumerate(hits, 1) if is_relevant(h, evidence)), None)
 
 
+def evidence_rank(hits: list[dict], q: dict) -> int | None:
+    """Rank at which the question's evidence is covered: any item, or (comparisons) every item."""
+    if not q["evidence"]:
+        return None
+    if not q.get("need_all"):
+        return first_relevant_rank(hits, q["evidence"])
+    ranks = [first_relevant_rank(hits, [e]) for e in q["evidence"]]
+    return None if None in ranks else max(ranks)
+
+
 def recall_at(ranks: list[int | None], k: int) -> float:
     return sum(r is not None and r <= k for r in ranks) / len(ranks)
 
@@ -111,29 +129,36 @@ class CachedLLM:
                 d = json.loads(l)
                 self.cache[d["k"]] = d["v"]
 
-    def __call__(self, messages, temperature=0.0):
-        k = hashlib.sha1(json.dumps(messages, ensure_ascii=False).encode()).hexdigest()
+    def __call__(self, messages, temperature=0.0, model=None):
+        # the default model keys on the messages alone, so caches from before model routing stay valid
+        key = messages if model is None else [model, messages]
+        k = hashlib.sha1(json.dumps(key, ensure_ascii=False).encode()).hexdigest()
         if k not in self.cache:
-            self.cache[k] = self.llm(messages)
+            self.cache[k] = self.llm(messages) if model is None else self.llm(messages, model=model)
             with self.path.open("a", encoding="utf-8") as f:
                 f.write(json.dumps({"k": k, "v": self.cache[k]}, ensure_ascii=False) + "\n")
         return self.cache[k]
 
 
-def run_config(name, mode, use_rewrite, gold, retriever, llm, generate=True) -> list[dict]:
-    from circulariq.answer import answer, rewrite
+def run_config(name: str, cfg: Config, gold, retriever, llm, generate=True) -> list[dict]:
+    from circulariq.answer import SEARCH_K, answer
 
     rows = []
     for i, q in enumerate(gold, 1):
-        query = rewrite(q["question"], llm) if use_rewrite else q["question"]
-        hits = retriever.search(query, mode=mode, k=10)
-        row = {"id": q["id"], "type": q["type"], "query": query,
-               "rank": first_relevant_rank(hits, q["evidence"]) if q["evidence"] else None,
-               "top_score": hits[0]["score"] if hits else 0.0,
-               "top5": [f"{h['ref']} p{h['para']}" for h in hits[:5]]}
+        t0 = time.perf_counter()
         if generate:
-            a = answer(q["question"], retriever, llm=llm, mode=mode, min_score=0.0, hits=hits, query=query)
-            row.update(answer=a["answer"], raw=a["raw"], llm_abstained=a["abstained"])
+            # gate off here; it is applied afterwards from top_score so any threshold can be swept for free
+            a = answer(q["question"], retriever, dataclasses.replace(cfg, min_score=0.0), llm)
+            hits = a["hits"]
+        else:
+            a, hits = None, retriever.search(q["question"], mode=cfg.mode, k=SEARCH_K)
+        row = {"id": q["id"], "type": q["type"], "query": a["query"] if a else q["question"],
+               "rank": evidence_rank(hits, q),
+               "top_score": max((h["score"] for h in hits[:cfg.top_k]), default=0.0),
+               "top5": [f"{h['ref']} p{h['para']}" for h in hits[:5]]}
+        if a:
+            row.update(answer=a["answer"], raw=a["raw"], llm_abstained=a["abstained"], route=a["route"],
+                       crag=a["crag"], seconds=round(time.perf_counter() - t0, 2))
             if not a["abstained"]:
                 row["faithfulness"], row["claims"] = faithfulness(a["raw"], a["sources"], llm)
                 cited = [a["sources"][n - 1] for n in a["cited"]]
@@ -263,10 +288,10 @@ def to_markdown(results: dict, generate: bool) -> str:
 def build_report(rows: dict, gold: list[dict], threshold: float, generate: bool) -> dict:
     """Every summary table from the per-question rows; used after a run and by --report."""
     full = FULL_SYSTEM if FULL_SYSTEM in rows else list(rows)[-1]
-    mode = CONFIGS[full][0]
+    mode = CONFIGS[full].mode
     results = {"threshold": threshold, "n_answerable": sum(q["type"] != "unanswerable" for q in gold),
                "n_unanswerable": sum(q["type"] == "unanswerable" for q in gold),
-               "summary": {n: summarize(rs, CONFIGS[n][0], threshold, generate) for n, rs in rows.items()},
+               "summary": {n: summarize(rs, CONFIGS[n].mode, threshold, generate) for n, rs in rows.items()},
                "full": full, "sweep": [], "failures": [], "rows": rows}
     if generate:
         results.update(sweep=threshold_sweep(rows[full]), by_type=by_type(rows[full], mode, threshold),
@@ -284,15 +309,24 @@ def write(results: dict, generate: bool):
     print(to_markdown(results, generate))
 
 
-def main(generate: bool, threshold: float):
+def needs_llm(cfg: Config) -> bool:
+    return cfg.rewrite or cfg.router or cfg.crag
+
+
+def main(generate: bool, threshold: float, only: list[str] | None = None):
     from circulariq.answer import chat
     from circulariq.retrieve import Retriever
 
     OUT.mkdir(parents=True, exist_ok=True)
     gold, retriever = load_gold(), Retriever()
     llm = CachedLLM(OUT / "llm_cache.jsonl", chat)
-    rows = {name: run_config(name, mode, rw, gold, retriever, llm, generate)
-            for name, (mode, rw) in CONFIGS.items() if generate or not rw}  # rewriting needs the LLM
+    rows = {}
+    if only:  # keep previously measured rows, re-run just these
+        rows = json.loads((OUT / "results.json").read_text(encoding="utf-8"))["rows"]
+    for name, cfg in CONFIGS.items():
+        if (not only or name in only) and (generate or not needs_llm(cfg)):
+            rows[name] = run_config(name, cfg, gold, retriever, llm, generate)
+    rows = {n: rows[n] for n in CONFIGS if n in rows}  # table order follows CONFIGS
     write(build_report(rows, gold, threshold, generate), generate)
 
 
@@ -304,6 +338,7 @@ if __name__ == "__main__":
     ap.add_argument("--retrieval-only", action="store_true")
     ap.add_argument("--threshold", type=float, default=MIN_RERANK_SCORE)
     ap.add_argument("--report", action="store_true", help="rebuild results.md from results.json (no retrieval/LLM)")
+    ap.add_argument("--only", help="comma-separated config names to (re)run; other rows are kept from results.json")
     a = ap.parse_args()
     if a.report:
         prev = json.loads((OUT / "results.json").read_text(encoding="utf-8"))
@@ -314,4 +349,4 @@ if __name__ == "__main__":
         probs = validate_gold(load_gold(), chunks)
         print("\n".join(probs) or f"gold OK: {len(load_gold())} questions, all evidence found")
     else:
-        main(generate=not a.retrieval_only, threshold=a.threshold)
+        main(generate=not a.retrieval_only, threshold=a.threshold, only=a.only.split(",") if a.only else None)

@@ -17,7 +17,9 @@ def test_gold_shape_matches_brief():
     answerable = [q for q in GOLD if q["type"] != "unanswerable"]
     assert len(GOLD) >= 60 and len(answerable) >= 60
     assert sum(q["type"] == "unanswerable" for q in GOLD) >= 15
-    assert {q["type"] for q in GOLD} == {"fact", "paraphrase", "exact-id", "table", "recency", "colloquial", "unanswerable"}
+    assert {q["type"] for q in GOLD} == {"fact", "paraphrase", "exact-id", "table", "recency", "colloquial",
+                                         "comparison", "unanswerable"}
+    assert all(q["need_all"] == (q["type"] == "comparison") and len(q["evidence"]) >= 2 for q in GOLD if q["need_all"])
     for q in GOLD:
         assert q["question"].strip() and q["answer"].strip()
         assert (q["type"] == "unanswerable") == (not q["evidence"])

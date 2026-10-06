@@ -13,7 +13,8 @@ Q = []
 def add(qtype, question, answer, *evidence, stale=()):
     Q.append({"id": f"q{len(Q) + 1:02d}", "type": qtype, "question": question, "answer": answer,
               "evidence": [{"nid": n, "quote": q} for n, q in evidence],
-              "stale": [{"nid": n, "quote": q} for n, q in stale]})
+              "stale": [{"nid": n, "quote": q} for n, q in stale],
+              "need_all": qtype == "comparison"})  # comparisons need every piece of evidence, not any
 
 
 # --- standalone circulars -------------------------------------------------------------
@@ -213,6 +214,31 @@ for q in [
     "Which bank is the lead bank for Leh district?",
 ]:
     add("unanswerable", q, "Not found in the provided circulars.")
+
+# --- comparisons across circulars (added for the query router; every evidence item is needed) ---
+add("comparison", "How did the end date of the CRR/SLR exemption for fresh FCNR(B) deposits of commercial banks change between the June 2026 and August 2026 directions?",
+    "The June directions exempted deposits mobilised till September 30, 2026; the August amendment cut the window to August 31, 2026.",
+    (13471, "till September 30, 2026"), (13680, "between June 8, 2026 and August 31, 2026"))
+add("comparison", "Which banks got lead bank responsibility for the new Nubra district in Ladakh and the new Bajali district in Assam?",
+    "State Bank of India for Nubra; Canara Bank for Bajali.",
+    (13675, "Nubra | State Bank of India"), (13463, "Bajali | Canara Bank"))
+add("comparison", "How is the swap tenor set under the FCNR(B) swap facility compared with the ECB/OFCB swap facility?",
+    "FCNR(B): aligned with the tenor of the underlying deposit (3-5 years). ECB/OFCB: coterminous with the borrowing, up to five years.",
+    (13468, "tenor of the swap will be in alignment with the tenor of the underlying deposits"),
+    (13469, "subject to maximum period of five years"))
+add("comparison", "How did the treatment of FCNR(B) and ECB swap positions in AD banks' open position change between the June 8 and June 23, 2026 circulars?",
+    "June 8: banks may exclude the swap positions. June 23: banks shall exclude positions from these hedged transactions when computing net overnight open position.",
+    (13470, "may exclude the swap positions"), (13529, "shall exclude the positions arising out of hedged transactions"))
+add("comparison", "Compare the filing deadline of the monthly NRD-CSR return with that of the half-yearly natural calamity relief return.",
+    "NRD-CSR: by the 10th of the following month. Relief return: within 30 days of the half-year end.",
+    (13725, "on or before 10th of the month following"), (13692, "within 30 days from the end of each half-year"))
+add("comparison", "Is the collateral-free limit for agricultural loans under KCC the same for commercial banks and small finance banks?",
+    "Yes, ₹2 lakh per borrower for both.",
+    (13522, "up to ₹2 lakh per borrower"), (13523, "up to ₹2 lakh per borrower"))
+add("comparison", "How often must the IT Strategy Committee meet in a commercial bank compared with an NBFC?",
+    "Commercial bank: at least quarterly. NBFC: at an appropriate frequency, with no more than six months between meetings.",
+    (13643, "The ITSC shall meet at least on a quarterly basis"),
+    (13592, "not more than six months should elapse between two meetings"))
 
 if __name__ == "__main__":
     out = Path(__file__).parent / "gold.jsonl"
