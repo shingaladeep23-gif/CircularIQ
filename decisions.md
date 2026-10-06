@@ -464,3 +464,40 @@ Question → semantic cache → router → (rewrite) → hybrid retrieve + re-ra
 - `run_config` now calls the real pipeline (gate disabled at run time, applied afterwards from `top_score`, as before) and records `route`, `crag`, and wall-clock `seconds` per question.
 - `CachedLLM` keys on `[model, messages]` when a non-default model is used, and on `messages` alone otherwise, so the 1.5B and 3B answers never collide and all pre-router cache entries stay valid (tested).
 - `--only` re-runs selected rows and keeps the rest from `results.json`.
+
+### D8.6 Cache evaluation: the signature guard is what makes 0.95 safe — *done (decision part)*
+- `python -m circulariq.eval_cache` measures the hit/miss *decisions* from embeddings alone, and real latency with the live pipeline.
+- **Look-alikes:** 45 gold questions with one detail swapped (entity type, instrument, code, district, year, month, ₹2000 → ₹500). **Cosine ≥ 0.95 alone would have reused the wrong answer for 40% (18/45) of them**, e.g. "…interest-rate ceiling for **commercial banks**" vs "…for **small finance banks**" at 0.973 cosine.
+- **The first guarded run leaked 1/45:** "…consolidated its instructions in **July** 2026" vs "**June** 2026" (cosine 0.957). The signature captured "2026" but not month names. Month names were added (tested). Final: **0/45 look-alike hits, 0/3,916 distinct gold-question pairs, 20/20 rephrasings hit.**
+- **Caveat:** The 20 rephrasings are hand-written and light (word swaps, reordering), so real-traffic hit rates will be lower. The safety result (0 false hits) is the one that matters; the hit rate is an upper bound.
+- **Threshold kept at 0.95**, not tuned: the guard, not the threshold, separates look-alikes (18 look-alikes sit between 0.95 and 0.99, overlapping the rephrasings).
+
+### D8.7 The router as specified lowers accuracy; why, and the variant tested — *measured*
+- **Result (89 questions):** Hybrid + re-ranker 79.7% correct → **+ router 17.6%** (answered 86.5% → 21.6%).
+- **Cause 1, small-model answers lose their citations:** 54 answerable questions went to the `simple` route (qwen2.5:1.5b, top 3): **7 correct vs 42** for the baseline on the same questions. Reading the raw outputs, the 1.5B answers are mostly *right* ("…on or before the 10th of the month following…") but carry no `[S#]` markers, so the uncited-means-abstain rule (D4.4) discards them. The cheap model fails the citation contract, not reading comprehension.
+- **Cause 2, the out-of-scope route can't work in this domain:** It sent **10 answerable** questions straight to abstention (the baseline answered 9 of them correctly; one was the Nubra/Bajali lead-bank comparison) and caught **1 of 15** unanswerable questions. The unanswerables are *in-domain* near-misses by design (repo rate, LRS limit…), which a topic classifier calls in-scope. The re-ranker score gate plus citation rules already reach 15/15.
+- **Cause 3, comparison fusion didn't beat the re-ranker:** 5 of 7 comparison questions were routed correctly, but the answers were 2/7 correct vs 5/7 for the baseline.
+- **Variant tested, `Config(router=True, router_cheap=False)` ("quality router"):** Keep only the routes that change retrieval (comparison → per-side fused queries; unclear → rewrite). Simple questions take the normal 3B path, and "out of scope" no longer abstains on its own. The changes follow from the mechanisms above, not from individual questions, but they are measured on the same 89 questions, so treat any gain as optimistic.
+
+### D8.8 Corrective RAG lowers accuracy here, and the failure profile says why — *measured, not shipped*
+- **Result:** 79.7% → **44.6%** correct; **0 questions gained, 26 lost**; median latency 5.3 s → 29.3 s. Faithfulness rose to 85.1%, but only because far fewer, easier questions were answered.
+- **Cause:** The 3B grader answered NO for **37 of 74** answerable questions, including many with the evidence at rank 1 (q01, q05, q06, q09…). Each NO triggered rewritten queries that pushed good passages *down* (q46 and q49 ended at ranks 8–9), and after two failed retries the pipeline abstained.
+- **Why no "better CRAG" was built:** CRAG fixes bad retrieval. The baseline's remaining failures are not bad retrieval: **11 of its 15 wrong-or-abstained answerable questions have a top re-ranker score ≥ 0.99**, and only one is below 0.9. They are the 3B model misreading or not citing a correctly retrieved passage. A score-aware CRAG that only acts on low-confidence retrievals could gain about one question. The cross-encoder is already a better relevance judge than a 3B YES/NO prompt.
+- **Kept in the codebase behind its flag** (`Config(crag=True)`, UI toggle), because with a stronger grader model or a weaker retriever the trade-off changes. Not on by default.
+
+### D8.9 Final Phase 2 verdict: what ships — *done*
+- **Final 89-question ablation:** see the README. Shipped configuration unchanged: **Hybrid + re-ranker, no rewrite, no router, no CRAG**, plus the **semantic cache on by default in the app**.
+- **Hybrid vs Hybrid + re-ranker, paired:** Hybrid (RRF) scored 82.4% correct vs 79.7%. Paired by question that is 5 wins vs 3 (exact McNemar p = 0.73), and one of the five (q18) is a documented judge error. The re-ranker keeps its place: equal end to end, clearly better retrieval (Recall@5 93.2% vs 90.5%, MRR 0.782 vs 0.716), and its scores drive the abstention gate.
+- **Quality router (D8.7 variant):** 77.0% correct, 0 questions gained, 2 lost (both comparisons). Its per-side query fusion retrieved comparison evidence *worse* than the re-ranker alone (57% vs 71%). Not shipped.
+- **Router + CRAG together:** 8.1% correct; the two failure modes compound. Measured for completeness.
+- **Semantic cache:** 0/45 look-alike false hits (cosine-only: 18/45), 20/20 rephrasings hit, median latency 11.3 s → 0.05 s (~225×).
+- **Bug found while deciding the default:** The first cache keyed only on the question, so an answer produced with CRAG off (or with BM25 only) could be served to a request with different settings. Entries now record the pipeline `Config` (minus the cache flag itself), and a hit requires an identical one (tested).
+- **Defaults:** `Config()` keeps every optional stage off, so library calls and evaluations are deterministic. The app turns the cache on because it is measured safe and every reused answer is labelled ("semantic cache hit (0.97) for: …"). Router and CRAG toggles say in their tooltips why they are off.
+
+### D8.10 Running long evaluations on a 6 GB machine — *done*
+- Claude Code stops background jobs when the system is critically low on memory and the session is idle. It stopped the 8-row eval twice (once mid-row, once between rows); a third time a row crashed natively at 179 MB free while loading the cross-encoder.
+- **Mitigations:**
+  - `OLLAMA_MAX_LOADED_MODELS=1` (user environment), so the 1.5B and 3B models are never resident together.
+  - One configuration per process (`--only`), saved on completion, with retries.
+  - At the project owner's explicit request, the final steps ran as an independent Windows process outside the session's job control, so the run continued through low-memory periods (Windows paged instead).
+- The disk-cached LLM calls (D6.6) meant every interruption cost at most the in-progress row.

@@ -11,12 +11,16 @@ import re
 SMALL_MODEL = os.environ.get("LLM_SMALL_MODEL", "qwen2.5:1.5b")
 
 # per-route settings; None model = the default (full) model
-ROUTES = {
+ROUTES = {  # "cheap" routing, as specified: small model for simple questions, instant abstain off-topic
     "simple": {"top_k": 3, "model": SMALL_MODEL, "rewrite": False, "multi_query": False},
     "comparison": {"top_k": 8, "model": None, "rewrite": False, "multi_query": True},
     "unclear": {"top_k": 5, "model": None, "rewrite": True, "multi_query": False},
-    "out_of_scope": {},
+    "out_of_scope": {"abstain": True},
 }
+# "quality" routing: keep only the routes that change retrieval. In the eval the 1.5B model answered simple
+# questions correctly but without [S#] citations (so they were discarded), and the classifier sent answerable
+# questions to out_of_scope while missing in-domain unanswerables -- the re-ranker score gate decides scope better.
+QUALITY_ROUTES = {"simple": {}, "comparison": ROUTES["comparison"], "unclear": ROUTES["unclear"], "out_of_scope": {}}
 
 CLASSIFY = """Classify a question sent to an assistant that answers ONLY from Reserve Bank of India (RBI) circulars
 (banking regulation, KYC, foreign exchange/FEMA, currency, payments, audit, lending, deposits, reporting).

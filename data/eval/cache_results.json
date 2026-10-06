@@ -1,0 +1,450 @@
+{
+ "threshold": 0.95,
+ "paraphrase_hit_rate": 1.0,
+ "lookalike_false_hits_with_guard": 0.0,
+ "lookalike_false_hits_cosine_only": 0.4,
+ "distinct_gold_pairs": 3916,
+ "distinct_false_hits_with_guard": 0,
+ "distinct_false_hits_cosine_only": 0,
+ "paraphrases": [
+  {
+   "original": "By what date each month must banks submit the NRD-CSR return?",
+   "paraphrase": "By what date every month do banks have to submit the NRD-CSR return?",
+   "cosine": 0.988,
+   "hit": true
+  },
+  {
+   "original": "What is the CIMS return code for the Non-Resident Deposits Comprehensive Single Return?",
+   "paraphrase": "Which CIMS return code is used for the Non-Resident Deposits Comprehensive Single Return?",
+   "cosine": 0.9886,
+   "hit": true
+  },
+  {
+   "original": "Can the Board delegate monitoring of ATM cassette swap implementation?",
+   "paraphrase": "Is the Board allowed to delegate monitoring of ATM cassette swap implementation?",
+   "cosine": 0.9739,
+   "hit": true
+  },
+  {
+   "original": "By when must all cash-handling staff of a bank be trained on detecting counterfeit notes?",
+   "paraphrase": "By when should all cash-handling staff of a bank be trained in detecting counterfeit notes?",
+   "cosine": 0.9877,
+   "hit": true
+  },
+  {
+   "original": "What deposit tenor qualifies fresh FCNR(B) deposits for the RBI dollar-rupee swap window?",
+   "paraphrase": "Which deposit tenor qualifies fresh FCNR(B) deposits for the RBI dollar-rupee swap window?",
+   "cosine": 0.9984,
+   "hit": true
+  },
+  {
+   "original": "Who is the lead bank for Bajali district in Assam?",
+   "paraphrase": "Which bank is the lead bank for Bajali district in Assam?",
+   "cosine": 0.9917,
+   "hit": true
+  },
+  {
+   "original": "How large is the Exim Bank line of credit to the Government of Maldives?",
+   "paraphrase": "What is the size of the Exim Bank line of credit to the Government of Maldives?",
+   "cosine": 0.9885,
+   "hit": true
+  },
+  {
+   "original": "How many FEMA circulars were withdrawn in the September 2026 review of FEMA circulars?",
+   "paraphrase": "How many FEMA circulars got withdrawn in the September 2026 review of FEMA circulars?",
+   "cosine": 0.9968,
+   "hit": true
+  },
+  {
+   "original": "Where can someone exchange old banknotes issued before 2005?",
+   "paraphrase": "Where can a person exchange old banknotes issued before 2005?",
+   "cosine": 0.997,
+   "hit": true
+  },
+  {
+   "original": "Until what date could ₹2000 notes be exchanged or deposited at ordinary bank branches?",
+   "paraphrase": "Till what date could ₹2000 notes be exchanged or deposited at ordinary bank branches?",
+   "cosine": 0.9922,
+   "hit": true
+  },
+  {
+   "original": "How many circulars did the Department of Supervision repeal when it consolidated its instructions in July 2026?",
+   "paraphrase": "How many circulars were repealed by the Department of Supervision when it consolidated its instructions in July 2026?",
+   "cosine": 0.985,
+   "hit": true
+  },
+  {
+   "original": "Till what date are fresh FCNR(B) deposits mobilised by commercial banks exempt from CRR and SLR?",
+   "paraphrase": "Until what date are fresh FCNR(B) deposits mobilised by commercial banks exempt from CRR and SLR?",
+   "cosine": 0.9966,
+   "hit": true
+  },
+  {
+   "original": "How often must the Board of a commercial bank review its fraud risk management policy?",
+   "paraphrase": "How frequently must the Board of a commercial bank review its fraud risk management policy?",
+   "cosine": 0.9949,
+   "hit": true
+  },
+  {
+   "original": "How long does a commercial bank have to either declare a red-flagged account a fraud or lift the red flag?",
+   "paraphrase": "How much time does a commercial bank get to either declare a red-flagged account a fraud or lift the red flag?",
+   "cosine": 0.9788,
+   "hit": true
+  },
+  {
+   "original": "How often should the IT Strategy Committee of a commercial bank meet?",
+   "paraphrase": "How frequently should the IT Strategy Committee of a commercial bank meet?",
+   "cosine": 0.9945,
+   "hit": true
+  },
+  {
+   "original": "For what term should an urban co-operative bank appoint its statutory auditors?",
+   "paraphrase": "For what term should an urban co-operative bank appoint its statutory auditor?",
+   "cosine": 0.995,
+   "hit": true
+  },
+  {
+   "original": "Up to what amount must commercial banks waive collateral and margin for farm loans?",
+   "paraphrase": "Up to which amount must commercial banks waive collateral and margin for farm loans?",
+   "cosine": 0.9973,
+   "hit": true
+  },
+  {
+   "original": "What minimum net worth does an applicant need to run a Trade Receivables Discounting System?",
+   "paraphrase": "What is the minimum net worth an applicant needs to run a Trade Receivables Discounting System?",
+   "cosine": 0.9976,
+   "hit": true
+  },
+  {
+   "original": "At what rate must an agency bank compensate a pensioner when the bank's own error delays the pension credit?",
+   "paraphrase": "At what rate should an agency bank compensate a pensioner when the bank's own error delays the pension credit?",
+   "cosine": 0.996,
+   "hit": true
+  },
+  {
+   "original": "How often are District Level Review Committee meetings held under the Lead Bank Scheme?",
+   "paraphrase": "How frequently are District Level Review Committee meetings held under the Lead Bank Scheme?",
+   "cosine": 0.9956,
+   "hit": true
+  }
+ ],
+ "lookalikes": [
+  {
+   "original": "By what date each month must banks submit the NRD-CSR return?",
+   "lookalike": "By what date each month must banks submit the NRO return?",
+   "cosine": 0.9296,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "What are the ways a bank can submit the NRD-CSR return on the CIMS portal?",
+   "lookalike": "What are the ways a bank can submit the NRO return on the CIMS portal?",
+   "cosine": 0.9385,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Can the Board delegate monitoring of ATM cassette swap implementation?",
+   "lookalike": "Can the Board delegate monitoring of branch cassette swap implementation?",
+   "cosine": 0.956,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "Is the monthly return on natural calamity relief measures still required from scheduled commercial banks?",
+   "lookalike": "Is the monthly return on natural calamity relief measures still required from scheduled small finance banks?",
+   "cosine": 0.9613,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "When computing their net overnight open position, should AD Category-I banks leave out positions from hedged FCNR(B), ECB and OFCB swap transactions?",
+   "lookalike": "When computing their net overnight open position, should AD Category-I banks leave out positions from hedged NRE, ECB and OFCB swap transactions?",
+   "cosine": 0.988,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "By what time each day must AD banks send data on FCNR(B) deposits raised under the RBI swap facility?",
+   "lookalike": "By what time each day must AD banks send data on NRE deposits raised under the RBI swap facility?",
+   "cosine": 0.9405,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "What deposit tenor qualifies fresh FCNR(B) deposits for the RBI dollar-rupee swap window?",
+   "lookalike": "What deposit tenor qualifies fresh NRE deposits for the RBI dollar-rupee swap window?",
+   "cosine": 0.9138,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "In what lot sizes can a bank sell US dollars to the RBI under the FCNR(B) swap facility?",
+   "lookalike": "In what lot sizes can a bank sell US dollars to the RBI under the NRE swap facility?",
+   "cosine": 0.9191,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Who is the lead bank for Bajali district in Assam?",
+   "lookalike": "Who is the lead bank for Nubra district in Ladakh?",
+   "cosine": 0.7313,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "How large is the Exim Bank line of credit to the Government of Maldives?",
+   "lookalike": "How large is the Exim Bank line of credit to the Government of Sri Lanka?",
+   "cosine": 0.8645,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Is agency commission payable on exports financed under the Maldives line of credit?",
+   "lookalike": "Is agency commission payable on exports financed under the Sri Lanka line of credit?",
+   "cosine": 0.9073,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Where can someone exchange old banknotes issued before 2005?",
+   "lookalike": "Where can someone exchange old banknotes issued before 2016?",
+   "cosine": 0.939,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Are banknotes from the pre-2005 series still legal tender?",
+   "lookalike": "Are banknotes from the pre-2016 series still legal tender?",
+   "cosine": 0.9365,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Until what date could ₹2000 notes be exchanged or deposited at ordinary bank branches?",
+   "lookalike": "Until what date could ₹500 notes be exchanged or deposited at ordinary bank branches?",
+   "cosine": 0.9566,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "How many circulars did the Department of Supervision repeal when it consolidated its instructions in July 2026?",
+   "lookalike": "How many circulars did the Department of Supervision repeal when it consolidated its instructions in June 2026?",
+   "cosine": 0.9572,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "Up to what date are advances against fresh FCNR(B) deposits excluded from ANBC for priority sector lending?",
+   "lookalike": "Up to what date are advances against fresh NRE deposits excluded from ANBC for priority sector lending?",
+   "cosine": 0.9406,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "For commercial banks, until when is the interest rate ceiling on fresh 3-5 year FCNR(B) deposits withdrawn?",
+   "lookalike": "For small finance banks, until when is the interest rate ceiling on fresh 3-5 year FCNR(B) deposits withdrawn?",
+   "cosine": 0.9725,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "Till what date are fresh FCNR(B) deposits mobilised by commercial banks exempt from CRR and SLR?",
+   "lookalike": "Till what date are fresh FCNR(B) deposits mobilised by small finance banks exempt from CRR and SLR?",
+   "cosine": 0.9671,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "Within how many working days must a qualifying person with one-time approval report their holding in a commercial bank crossing five per cent?",
+   "lookalike": "Within how many working days must a qualifying person with one-time approval report their holding in a small finance bank crossing five per cent?",
+   "cosine": 0.9705,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "How should commercial banks value units of InvITs in their investment portfolio?",
+   "lookalike": "How should small finance banks value units of InvITs in their investment portfolio?",
+   "cosine": 0.9487,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Can commercial banks now accept KYC copies certified by a notary abroad from Foreign Portfolio Investors?",
+   "lookalike": "Can small finance banks now accept KYC copies certified by a notary abroad from Foreign Portfolio Investors?",
+   "cosine": 0.9626,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "How often must the Board of a commercial bank review its fraud risk management policy?",
+   "lookalike": "How often must the Board of a small finance bank review its fraud risk management policy?",
+   "cosine": 0.9334,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Within how many days must a commercial bank report a red-flagged account with ₹3 crore or more exposure on CRILC?",
+   "lookalike": "Within how many days must a small finance bank report a red-flagged account with ₹3 crore or more exposure on CRILC?",
+   "cosine": 0.9668,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "How long does a commercial bank have to either declare a red-flagged account a fraud or lift the red flag?",
+   "lookalike": "How long does a small finance bank have to either declare a red-flagged account a fraud or lift the red flag?",
+   "cosine": 0.942,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "What is the deadline for a commercial bank to file the Fraud Monitoring Return after classifying an account as fraud?",
+   "lookalike": "What is the deadline for a small finance bank to file the Fraud Monitoring Return after classifying an account as fraud?",
+   "cosine": 0.9363,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "How often should the IT Strategy Committee of a commercial bank meet?",
+   "lookalike": "How often should the IT Strategy Committee of a small finance bank meet?",
+   "cosine": 0.9389,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "How often must a commercial bank's Board review its compliance policy?",
+   "lookalike": "How often must a small finance bank's Board review its compliance policy?",
+   "cosine": 0.935,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "To whom should the head of internal audit of a commercial bank report?",
+   "lookalike": "To whom should the head of internal audit of a small finance bank report?",
+   "cosine": 0.9202,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Which urban co-operative banks must have their statutory audit done jointly by at least two audit firms?",
+   "lookalike": "Which regional rural banks must have their statutory audit done jointly by at least two audit firms?",
+   "cosine": 0.8333,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "For what term should an urban co-operative bank appoint its statutory auditors?",
+   "lookalike": "For what term should an regional rural bank appoint its statutory auditors?",
+   "cosine": 0.8216,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "What minimum share of gross advances must statutory auditors of a UCB cover through branch audits?",
+   "lookalike": "What minimum share of gross advances must statutory auditors of a NBFC cover through branch audits?",
+   "cosine": 0.9357,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Within how many days must a UCB's concurrent auditors send their quarterly investment certificate to the RBI?",
+   "lookalike": "Within how many days must a NBFC's concurrent auditors send their quarterly investment certificate to the RBI?",
+   "cosine": 0.9387,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Up to what amount must commercial banks waive collateral and margin for farm loans?",
+   "lookalike": "Up to what amount must small finance banks waive collateral and margin for farm loans?",
+   "cosine": 0.95,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "How soon after a quarter ends must commercial banks submit KCC loan data?",
+   "lookalike": "How soon after a quarter ends must small finance banks submit KCC loan data?",
+   "cosine": 0.9667,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "What specific risk capital charge applies to a commercial bank's gross equity positions?",
+   "lookalike": "What specific risk capital charge applies to a small finance bank's gross equity positions?",
+   "cosine": 0.9422,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "got some really old notes from before 2005 lying around, where do I swap them?",
+   "lookalike": "got some really old notes from before 2016 lying around, where do I swap them?",
+   "cosine": 0.9635,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "What interchange fee do banks pay for ATM transactions at other banks?",
+   "lookalike": "What interchange fee do banks pay for branch transactions at other banks?",
+   "cosine": 0.9567,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "What savings bank deposit interest rate must commercial banks pay?",
+   "lookalike": "What savings bank deposit interest rate must small finance banks pay?",
+   "cosine": 0.8905,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "How did the end date of the CRR/SLR exemption for fresh FCNR(B) deposits of commercial banks change between the June 2026 and August 2026 directions?",
+   "lookalike": "How did the end date of the CRR/SLR exemption for fresh FCNR(B) deposits of small finance banks change between the June 2026 and August 2026 directions?",
+   "cosine": 0.9772,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "Which banks got lead bank responsibility for the new Nubra district in Ladakh and the new Bajali district in Assam?",
+   "lookalike": "Which banks got lead bank responsibility for the new Nubra district in Ladakh and the new Nubra district in Ladakh?",
+   "cosine": 0.9091,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "How is the swap tenor set under the FCNR(B) swap facility compared with the ECB/OFCB swap facility?",
+   "lookalike": "How is the swap tenor set under the NRE swap facility compared with the ECB/OFCB swap facility?",
+   "cosine": 0.9416,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "How did the treatment of FCNR(B) and ECB swap positions in AD banks' open position change between the June 8 and June 23, 2026 circulars?",
+   "lookalike": "How did the treatment of NRE and ECB swap positions in AD banks' open position change between the June 8 and June 23, 2026 circulars?",
+   "cosine": 0.942,
+   "hit": false,
+   "cosine_only_hit": false
+  },
+  {
+   "original": "Compare the filing deadline of the monthly NRD-CSR return with that of the half-yearly natural calamity relief return.",
+   "lookalike": "Compare the filing deadline of the monthly NRO return with that of the half-yearly natural calamity relief return.",
+   "cosine": 0.9669,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "Is the collateral-free limit for agricultural loans under KCC the same for commercial banks and small finance banks?",
+   "lookalike": "Is the collateral-free limit for agricultural loans under KCC the same for small finance banks and small finance banks?",
+   "cosine": 0.9886,
+   "hit": false,
+   "cosine_only_hit": true
+  },
+  {
+   "original": "How often must the IT Strategy Committee meet in a commercial bank compared with an NBFC?",
+   "lookalike": "How often must the IT Strategy Committee meet in a small finance bank compared with an NBFC?",
+   "cosine": 0.9582,
+   "hit": false,
+   "cosine_only_hit": true
+  }
+ ],
+ "median_seconds_miss": 11.335679349998827,
+ "median_seconds_hit": 0.04578090000723023
+}

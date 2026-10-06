@@ -40,7 +40,8 @@ def signature(question: str) -> list[str]:
     ents = {name for name, pat in ENTITIES.items() if re.search(pat, low)}
     acronyms = set(re.findall(r"\b[A-Z][A-Z0-9]{1,}(?:\([A-Z]\))?", question)) - {"RBI", "I"}
     codes = set(re.findall(r"[A-Za-z]*\d[\w./()-]*", question))  # R343, 2026-27, RBI/2026-27/273, 2026
-    return sorted(ents | {a.upper() for a in acronyms} | {c.lower() for c in codes})
+    months = set(re.findall(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b", low))  # July vs June 2026
+    return sorted(ents | {a.upper() for a in acronyms} | {c.lower() for c in codes} | months)
 
 
 class SemanticCache:
@@ -57,18 +58,21 @@ class SemanticCache:
             self._embed = lambda xs: embedder().encode(xs, normalize_embeddings=True)
         return np.asarray(self._embed([text])[0], dtype="float32")
 
-    def get(self, question: str) -> dict | None:
-        if not self.entries:
+    def get(self, question: str, config: str = "") -> dict | None:
+        """config: the pipeline settings the answer must have been produced under (a BM25-only answer
+        must not be served to a re-ranker request)."""
+        entries = [e for e in self.entries if e.get("config", "") == config]
+        if not entries:
             return None
-        sims = np.asarray([e["vec"] for e in self.entries], dtype="float32") @ self.embed(question)
+        sims = np.asarray([e["vec"] for e in entries], dtype="float32") @ self.embed(question)
         best = int(np.argmax(sims))
-        e = self.entries[best]
+        e = entries[best]
         if sims[best] >= self.threshold and e["sig"] == signature(question):
             return {**e["result"], "cache": {"hit": True, "similarity": float(sims[best]), "matched": e["question"]}}
         return None
 
-    def put(self, question: str, result: dict):
-        entry = {"question": question, "vec": self.embed(question).round(5).tolist(), "sig": signature(question),
+    def put(self, question: str, result: dict, config: str = ""):
+        entry = {"question": question, "config": config, "vec": self.embed(question).round(5).tolist(), "sig": signature(question),
                  "nids": sorted({h["nid"] for h in result.get("sources", []) + result.get("hits", [])}),
                  "result": {k: v for k, v in result.items() if k != "cache"}}
         self.entries.append(entry)

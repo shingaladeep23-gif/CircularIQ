@@ -8,7 +8,7 @@ python -m circulariq.answer "What is the tear size limit for unfit notes?"
 import os
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from circulariq import crag, router
 from circulariq.retrieve import rrf
@@ -24,6 +24,7 @@ class Config:
     mode: str = "rerank"  # bm25 | dense | hybrid | rerank (hybrid top 50 re-scored by the cross-encoder)
     rewrite: bool = False  # rewrite every question first; lowered recall in the eval (decisions D6.14)
     router: bool = False  # route by question type: router.py
+    router_cheap: bool = True  # True: router.ROUTES (small model, instant off-topic abstain); False: QUALITY_ROUTES
     crag: bool = False  # grade passages, retry retrieval, else abstain: crag.py
     semantic_cache: bool = False  # reuse answers to near-identical questions: cache.py
     min_score: float = MIN_RERANK_SCORE  # re-ranker score gate; 0 disables it
@@ -124,8 +125,9 @@ def fused_search(queries: list[str], search) -> list[dict]:
 
 
 def answer(question: str, retriever, cfg: Config = Config(), llm=chat, cache=None) -> dict:
+    cache_key = repr(replace(cfg, semantic_cache=False))  # answers are only reused under identical settings
     if cfg.semantic_cache and cache is not None:
-        hit = cache.get(question)
+        hit = cache.get(question, cache_key)
         if hit:
             return hit
 
@@ -134,15 +136,15 @@ def answer(question: str, retriever, cfg: Config = Config(), llm=chat, cache=Non
 
     def finish(result):
         if cfg.semantic_cache and cache is not None:
-            cache.put(question, result)
+            cache.put(question, result, cache_key)
         return result
 
     settings = {}
     if cfg.router:
         out["route"] = router.classify(question, llm)
-        settings = router.ROUTES[out["route"]]
-        if out["route"] == "out_of_scope":
-            return finish(out)  # nothing in an RBI corpus can answer it; don't spend retrieval or the LLM
+        settings = (router.ROUTES if cfg.router_cheap else router.QUALITY_ROUTES)[out["route"]]
+        if settings.get("abstain"):
+            return finish(out)  # judged off-topic: don't spend retrieval or the LLM
     top_k = settings.get("top_k", cfg.top_k)
 
     def search(q):

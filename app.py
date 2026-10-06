@@ -56,11 +56,14 @@ with ask:
     use_rewrite = c2.toggle("Rewrite query", value=False, key="rewrite",
                             help="LLM rewrites the question before search. Off by default: it lowered Recall@5 in the eval.")
     use_router = c2.toggle("Route by question type", value=False, key="router",
-                           help="Small model sorts the question: simple / comparison / out of scope / unclear.")
+                           help="Small model sorts the question: simple / comparison / out of scope / unclear. "
+                                "Off by default: it lowered correctness in the eval.")
     use_crag = c3.toggle("Corrective RAG", value=False, key="crag",
-                         help="Grade the passages; if they don't answer, search again (up to 2 times), else abstain.")
-    use_cache = c3.toggle("Semantic cache", value=False, key="semcache",
-                          help="Reuse the answer to a near-identical earlier question (same entities and codes).")
+                         help="Grade the passages; if they don't answer, search again (up to 2 times), else abstain. "
+                              "Off by default: it lowered correctness in the eval.")
+    use_cache = c3.toggle("Semantic cache", value=True, key="semcache",
+                          help="Reuse the answer to a near-identical earlier question asked with the same settings "
+                               "(entities, codes and dates must match). 0 false hits in the eval; ~225x faster.")
     cfg = Config(mode=mode, rewrite=use_rewrite, router=use_router, crag=use_crag, semantic_cache=use_cache)
 
     if q:

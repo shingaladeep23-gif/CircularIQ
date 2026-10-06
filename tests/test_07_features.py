@@ -64,6 +64,14 @@ def test_comparison_route_fuses_one_search_per_side(retriever):
     assert len(r["sources"]) == 8 and llm.models[-1] is None  # full model for comparisons
 
 
+def test_quality_router_keeps_full_path_for_simple_and_off_topic(retriever):
+    for label in ("simple", "out_of_scope"):
+        llm = PromptLLM([("Classify a question", label), ("Sources:", NSM_ANSWER)])
+        r = answer(NSM_Q, retriever, Config(router=True, router_cheap=False), llm)
+        assert r["route"] == label and not r["abstained"] and len(r["sources"]) == 5
+        assert llm.models[-1] is None  # answered by the full model
+
+
 def test_unclear_route_rewrites_first(retriever):
     llm = PromptLLM([("Classify a question", "unclear"), ("Rewrite the user's question", "note sorting machine testing frequency"),
                      ("Sources:", NSM_ANSWER)])
@@ -123,6 +131,7 @@ def test_signature_separates_entities_codes_and_instruments():
     assert signature(base) != signature(base.replace("commercial banks", "small finance banks"))
     assert signature(base) != signature(base.replace("FCNR(B)", "NRE"))
     assert signature("What is return R343?") != signature("What is return R006?")
+    assert signature("circulars repealed in July 2026") != signature("circulars repealed in June 2026")
 
 
 def fake_embed(table):
@@ -168,6 +177,14 @@ def test_index_rebuild_invalidates_cache_for_changed_circular(fixture_chunks, tm
     edited = [{**ch, "text": ch["text"] + " (amended)"} if ch["nid"] == 13724 else ch for ch in fixture_chunks]
     build(edited, tmp_path, cache_path=tmp_path / "c.jsonl")
     assert [e["question"] for e in SemanticCache(tmp_path / "c.jsonl").entries] == ["r"]
+
+
+def test_cache_never_crosses_pipeline_settings(retriever, tmp_path):
+    cache = SemanticCache(tmp_path / "c.jsonl")
+    answer(NSM_Q, retriever, Config(semantic_cache=True, mode="bm25"), FakeLLM(NSM_ANSWER), cache)
+    llm = FakeLLM(NSM_ANSWER)
+    r = answer(NSM_Q, retriever, Config(semantic_cache=True), llm, cache)  # re-ranker settings: must recompute
+    assert not r.get("cache") and len(llm.calls) == 1
 
 
 def test_pipeline_cache_skips_llm_on_repeat(retriever, tmp_path):
@@ -224,10 +241,10 @@ def test_ui_corrective_rag_reports_its_grade(page, app_url):
 
 
 @needs_llm
-def test_ui_semantic_cache_serves_repeat_question(page, app_url):
-    toggle_and_ask(page, app_url, "Semantic cache", "How often must note sorting machines be tested by banks?")
-    expect(page.locator(".st-key-answer")).to_contain_text("RBI/DCM/2026-27/473", timeout=180_000)
-    toggle_and_ask(page, app_url, "Semantic cache", "How often must note sorting machines be tested by banks?")
+def test_ui_semantic_cache_is_on_by_default_and_serves_repeats(page, app_url):
+    for _ in range(2):  # the second ask (a fresh page load) must come from the cache
+        ask(page, app_url, "How often must note sorting machines be tested by banks?")
+        expect(page.locator(".st-key-answer")).to_contain_text("RBI/DCM/2026-27/473", timeout=180_000)
     expect(page.get_by_text("semantic cache hit", exact=False)).to_be_visible(timeout=60_000)
 
 
