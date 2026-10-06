@@ -135,10 +135,41 @@ Newest entries go at the bottom of each section. Status: **done** = implemented,
 
 ---
 
-## 3. Retrieval (Day 2) — *planned, to be confirmed when built*
+## 3. Retrieval (Day 2)
 
-- **Embeddings:** `BAAI/bge-small-en-v1.5` (384-d, runs on the GTX 1050). Rejected `e5-small` (similar; bge ranks higher on MTEB retrieval) and large models (VRAM).
-- **Vector index:** FAISS exact inner-product search (`IndexFlatIP`) over normalised vectors. Rejected Chroma (adds a persistence/server layer we don't need) and approximate indexes (with ~10k vectors, exact search takes milliseconds; ANN would only add recall loss).
-- **Keyword index:** `rank_bm25` (BM25Okapi).
-- **Fusion:** Reciprocal Rank Fusion with k = 60, written by hand (~10 lines).
-- **Re-ranker:** `BAAI/bge-reranker-base` cross-encoder over the top 50 → top 5.
+### D3.1 Embedding model: `BAAI/bge-small-en-v1.5` — *done*
+- **Chosen:** bge-small-en-v1.5 (33M params, 384-d) via sentence-transformers.
+- **Rejected:** `intfloat/e5-small-v2` (same size, slightly lower MTEB retrieval scores, and needs `query:`/`passage:` prefixes on both sides); `bge-base`/`bge-large` (3–10× slower on CPU for a modest gain); OpenAI embeddings (paid, and the project is offline by choice, see D0.1).
+- **Query instruction:** Queries get bge's recommended prefix ("Represent this sentence for searching relevant passages: "); passages don't. This asymmetry is how bge-v1.5 was trained for short-query retrieval.
+- **Contextual chunk text:** What gets embedded is `title + section + text`, not the bare paragraph. Many paragraphs ("2. Accordingly, it has been decided…") mean nothing without the circular's subject.
+
+### D3.2 CPU-only PyTorch — *done*
+- **Chosen:** Keep the installed CPU build of torch.
+- **Rejected:** Installing a CUDA build for the GTX 1050.
+- **Why:** The card is Pascal (sm_61) with 3 GB VRAM, and recent CUDA builds of PyTorch are dropping Pascal. bge-small embeds 5.7k chunks on CPU in a few minutes, once. Query-time encoding is a single sentence. Not worth a 2.5 GB reinstall with an uncertain outcome.
+
+### D3.3 Vector index: FAISS `IndexFlatIP` — *done*
+- **Chosen:** Exact inner-product search over L2-normalised vectors (= cosine similarity).
+- **Rejected:**
+  - *Chroma:* a database layer (persistence, collections, its own embedding hooks) we don't need, and it hides the search behind an API.
+  - *Approximate indexes (IVF, HNSW):* at 5.7k × 384 floats (~9 MB), brute force takes about a millisecond. ANN would only add recall loss and tuning knobs.
+- **Self-contained index dir:** `data/index/` holds `dense.faiss` plus its own `chunks.jsonl` copy, so FAISS row *i* is always chunk *i* even if `data/chunks.jsonl` is regenerated later.
+- **Upgrade path:** Switch to `IndexHNSWFlat` if the corpus grows past ~500k chunks.
+
+### D3.4 Keyword index: `rank_bm25.BM25Okapi`, built at load time — *done*
+- **Chosen:** Rebuild BM25 in memory when the Retriever loads (under a second for 5.7k chunks).
+- **Rejected:** Pickling the BM25 object (fragile across library versions); Elasticsearch/OpenSearch (a server for 5.7k documents).
+- **BM25 sees `ref + circular_no + title + section + text`**, so a query containing "RBI/2026-27/200" or "DOR.AML.REC.233" hits the circular even though the code never appears in its paragraphs.
+- **Tokenizer indexes codes at three levels:** whole code, `/` segments, and atoms. `DOR.AML.REC.233/14.06.001/2026-27` → the whole string; `dor.aml.rec.233`, `14.06.001`, `2026-27`; `dor`, `aml`, `rec`, `233`, … A user typing any partial form still matches. The first version skipped the middle level; a unit test caught it.
+- **Omitted:** Stemming and stopword lists. BM25's IDF already down-weights common words, and stemming regulatory terms ("provisioning" → "provis") risks merging distinct concepts. Revisit if eval shows morphology misses.
+
+### D3.5 Fusion: Reciprocal Rank Fusion, k = 60, hand-written — *done*
+- **Chosen:** `score(d) = Σ 1 / (60 + rank)` over the BM25 and dense top-50 lists. 10 lines in `retrieve.rrf`.
+- **Rejected:** Weighted sum of normalised scores (BM25 scores are unbounded and query-dependent, cosine is in [-1, 1]; any normalisation is arbitrary and needs tuning); library fusion helpers (the brief asks for code that can be explained line by line).
+- **Why k = 60:** The value from the original RRF paper (Cormack et al., 2009); it damps the gap between rank 1 and rank 2 so one list cannot dominate. Not tuned, to avoid overfitting the small gold set.
+
+### D3.6 UI started on Day 2 instead of Day 6 — *done*
+- **Chosen:** A minimal Streamlit search page now (question box, retrieval-mode switch, passages with citation links and scores), grown each day.
+- **Why:** It gives every pipeline step a real end-to-end Playwright test (type a question in Chromium, assert the right circular appears), as the project owner asked. It also meets the Day 6 requirement to show retrieved chunks with scores.
+- **Stable selectors:** Each result is `st.container(key="hit-N")`, which Streamlit renders as CSS class `st-key-hit-N`. Tests use those and accessible labels, never Streamlit's internal class names.
+- **Hermetic UI tests:** `app.py` reads the index location from `CIRCULARIQ_INDEX`. `tests/conftest.py` builds a small index from the 5 real fixture circulars and launches Streamlit on a free port against it, so the browser tests never depend on the full local corpus.
